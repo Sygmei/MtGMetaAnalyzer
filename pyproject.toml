@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mtg-meta-analyzer"
+version = "0.1.0"
+description = "Retrieve Duel Commander decks from MtgTop8 and analyze a Moxfield list against the meta."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "MtGMetaAnalyzer" }]
+dependencies = [
+  "beautifulsoup4>=4.12.0",
+  "playwright>=1.55.0",
+  "requests>=2.31.0",
+]
+
+[project.scripts]
+mtg-meta = "mtg_meta_analyzer.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
