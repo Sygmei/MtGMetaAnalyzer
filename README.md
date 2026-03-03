@@ -62,7 +62,8 @@ uv run mtg-meta analyze \
   --moxfield-url 'https://www.moxfield.com/decks/<deck_id>' \
   --cache-root cache \
   --keep-top 20 \
-  --cut-top 20
+  --cut-top 20 \
+  --add-top 20
 ```
 
 Notes:
@@ -83,7 +84,8 @@ Output:
 
 - MtgTop8 and Moxfield can change markup/API without notice. The implementation includes fallbacks but may need selector updates.
 - Date parsing supports `DD/MM/YYYY`, `DD/MM/YY`, and `YYYY-MM-DD`.
-- Analysis compares only Moxfield mainboard cards (commander excluded from keep/cut ranking).
+- Analysis outputs `keep`, `cut`, and `to_add` recommendations.
+- `to_add` contains cards missing from your deck that appear in many filtered MtgTop8 decks.
 - Moxfield retrieval is Playwright-only (no direct `requests` calls to Moxfield APIs).
 - Commander and mainboard are extracted from the rendered deck page HTML (not only from network JSON payload shape).
 - You can override user-agent with `MOXFIELD_USER_AGENT`.

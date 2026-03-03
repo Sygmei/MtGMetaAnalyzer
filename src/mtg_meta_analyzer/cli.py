@@ -66,6 +66,7 @@ def main() -> None:
     analyze_parser.add_argument("--end-date", required=False, help="Optional end date (YYYY-MM-DD)")
     analyze_parser.add_argument("--keep-top", type=int, default=20, help="Number of keep suggestions")
     analyze_parser.add_argument("--cut-top", type=int, default=20, help="Number of cut suggestions")
+    analyze_parser.add_argument("--add-top", type=int, default=20, help="Number of to-add suggestions")
     analyze_parser.add_argument(
         "--output-json",
         default=None,
@@ -147,6 +148,7 @@ def run_analyze(args: argparse.Namespace) -> None:
         end=end,
         keep_top=args.keep_top,
         cut_top=args.cut_top,
+        add_top=args.add_top,
     )
 
     output_path = (
@@ -160,6 +162,7 @@ def run_analyze(args: argparse.Namespace) -> None:
     print(f"Decks considered: {result.total_decks_considered}")
     print(f"Keep recommendations written: {len(result.keep)}")
     print(f"Cut recommendations written: {len(result.cut)}")
+    print(f"To-add recommendations written: {len(result.to_add)}")
     print(f"Output: {output_path}")
 
 
