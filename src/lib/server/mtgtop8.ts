@@ -22,6 +22,9 @@ const DEFAULT_HTML_ENCODING = 'utf-8';
 const META_CHARSET_PATTERN = /<meta[^>]+charset\s*=\s*["']?\s*([a-z0-9._-]+)/i;
 const META_HTTP_EQUIV_CHARSET_PATTERN =
   /<meta[^>]+http-equiv\s*=\s*["']content-type["'][^>]+content\s*=\s*["'][^"']*charset=([a-z0-9._-]+)/i;
+const SCRYFALL_NAMED_FUZZY_URL = 'https://api.scryfall.com/cards/named';
+const SCRYFALL_TIMEOUT_MS = 8_000;
+const scryfallNameCache = new Map<string, string>();
 
 interface PageRequest {
   method: 'GET' | 'POST';
@@ -225,15 +228,20 @@ export class MtgTop8Client {
   async fetchDeckCards(deckUrl: string): Promise<{ cards: Record<string, number>; sections: Record<string, Record<string, number>> }> {
     const html = await this.get(deckUrl);
     const { sections } = extractDeckSections(html);
+    const normalizedSections = await normalizeMtgTop8DeckSections({
+      html,
+      sections,
+      headers: this.headers
+    });
 
-    const cards = { ...(sections.main || {}) };
-    for (const [name, quantity] of Object.entries(sections.commander || {})) {
+    const cards = { ...(normalizedSections.main || {}) };
+    for (const [name, quantity] of Object.entries(normalizedSections.commander || {})) {
       if (!(name in cards)) {
         cards[name] = quantity;
       }
     }
 
-    return { cards, sections };
+    return { cards, sections: normalizedSections };
   }
 
   private async retryPageRequestIfStalled(args: {
@@ -1199,4 +1207,264 @@ function bigrams(value: string): string[] {
     pairs.push(clean.slice(i, i + 2));
   }
   return pairs;
+}
+
+async function normalizeMtgTop8DeckSections(args: {
+  html: string;
+  sections: Record<string, Record<string, number>>;
+  headers: HeadersInit;
+}): Promise<Record<string, Record<string, number>>> {
+  const { html, sections, headers } = args;
+  const aliases = await buildCanonicalAliasMapFromMtgTop8Html(html, headers);
+  if (!aliases.size) {
+    return sections;
+  }
+
+  const normalized: Record<string, Record<string, number>> = {};
+  let cardsRenamed = 0;
+  for (const [sectionName, cardMap] of Object.entries(sections)) {
+    const nextSection: Record<string, number> = {};
+    for (const [rawName, quantity] of Object.entries(cardMap)) {
+      const canonical = aliases.get(normalizeName(rawName)) || rawName;
+      if (canonical !== rawName) {
+        cardsRenamed += 1;
+      }
+      nextSection[canonical] = (nextSection[canonical] || 0) + quantity;
+    }
+    normalized[sectionName] = nextSection;
+  }
+
+  if (cardsRenamed > 0) {
+    console.info(`MtgTop8: normalized card names aliases=${aliases.size} cards_renamed=${cardsRenamed}`);
+  }
+  return normalized;
+}
+
+async function buildCanonicalAliasMapFromMtgTop8Html(html: string, headers: HeadersInit): Promise<Map<string, string>> {
+  const $ = load(html);
+  const flavorToHint = new Map<string, { display: string; hint: string }>();
+
+  $('.deck_line').each((_, line) => {
+    const displayName = extractDivLineCardName($, line);
+    if (!displayName) {
+      return;
+    }
+
+    const onclickHint = extractCardNameHintFromOnclick(String($(line).attr('onclick') || ''));
+    if (!onclickHint) {
+      return;
+    }
+
+    const displayNorm = normalizeName(displayName);
+    const hintNorm = normalizeName(onclickHint);
+    if (!displayNorm || !hintNorm || displayNorm === hintNorm) {
+      return;
+    }
+    if (!flavorToHint.has(displayNorm)) {
+      flavorToHint.set(displayNorm, { display: displayName, hint: onclickHint });
+    }
+  });
+
+  $('a').each((_, anchor) => {
+    const displayName = $(anchor).text().replace(/\s+/g, ' ').trim();
+    const hint = extractCardNameHintFromHref(String($(anchor).attr('href') || ''));
+    if (!displayName || !hint) {
+      return;
+    }
+
+    const displayNorm = normalizeName(displayName);
+    const hintNorm = normalizeName(hint);
+    if (!displayNorm || !hintNorm || displayNorm === hintNorm) {
+      return;
+    }
+
+    if (!flavorToHint.has(displayNorm)) {
+      flavorToHint.set(displayNorm, { display: displayName, hint });
+    }
+  });
+
+  if (!flavorToHint.size) {
+    return new Map<string, string>();
+  }
+
+  const userAgent = resolveUserAgent(headers);
+  const hintToCanonical = new Map<string, string>();
+  await Promise.all(
+    [...new Set([...flavorToHint.values()].map((entry) => entry.hint))].map(async (hint) => {
+      const canonical = await resolveScryfallCanonicalName(hint, userAgent);
+      hintToCanonical.set(hint, canonical || hint);
+    })
+  );
+
+  const aliases = new Map<string, string>();
+  for (const [displayNorm, entry] of flavorToHint.entries()) {
+    const canonical = hintToCanonical.get(entry.hint);
+    if (!canonical) {
+      continue;
+    }
+    const preferred = choosePreferredCanonicalName(entry.display, canonical);
+    if (!preferred || normalizeName(preferred) === displayNorm) {
+      continue;
+    }
+    aliases.set(displayNorm, preferred);
+  }
+  return aliases;
+}
+
+function choosePreferredCanonicalName(displayName: string, resolvedName: string): string {
+  const normalizedDisplay = normalizeName(displayName);
+  const faces = resolvedName
+    .split(/\s*\/\/\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!faces.length) {
+    return resolvedName;
+  }
+  if (faces.length === 1 || !normalizedDisplay) {
+    return faces[0];
+  }
+
+  for (const face of faces) {
+    if (normalizeName(face) === normalizedDisplay) {
+      return face;
+    }
+  }
+  for (const face of faces) {
+    const normalizedFace = normalizeName(face);
+    if (!normalizedFace) {
+      continue;
+    }
+    if (normalizedFace.includes(normalizedDisplay) || normalizedDisplay.includes(normalizedFace)) {
+      return face;
+    }
+  }
+
+  return faces[0];
+}
+
+function extractCardNameHintFromOnclick(onclick: string): string | null {
+  if (!onclick) {
+    return null;
+  }
+  const match = /AffCard(?:V)?\(\s*'[^']*'\s*,\s*'((?:\\'|[^'])+)'/i.exec(onclick);
+  if (!match?.[1]) {
+    return null;
+  }
+
+  const decoded = decodeHtmlText(match[1].replace(/\\'/g, "'").replace(/\+/g, ' ')).trim();
+  return decoded || null;
+}
+
+function extractCardNameHintFromHref(href: string): string | null {
+  if (!href || href.startsWith('javascript:') || href.startsWith('#')) {
+    return null;
+  }
+
+  const cardsPathMatch = href.match(/^\/cards\/[A-Za-z0-9]+-([A-Za-z0-9-]+)$/);
+  if (cardsPathMatch?.[1]) {
+    const pathHint = cardsPathMatch[1].replace(/-/g, ' ').replace(/\s+/g, ' ').trim();
+    if (pathHint) {
+      return pathHint;
+    }
+  }
+
+  try {
+    const absolute = absolutizeUrl(BASE_URL, href);
+    const url = new URL(absolute);
+    for (const key of ['cards', 'card', 'name', 'n']) {
+      const raw = url.searchParams.get(key);
+      if (!raw) {
+        continue;
+      }
+      const decoded = decodeHtmlText(raw.replace(/\+/g, ' ')).replace(/\s+/g, ' ').trim();
+      if (decoded) {
+        return decoded;
+      }
+    }
+  } catch {
+    // fall through to regex parse
+  }
+
+  const queryMatch = /(?:\?|&)(?:cards|card|name|n)=([^&]+)/i.exec(href);
+  if (queryMatch?.[1]) {
+    const decoded = decodeHtmlText(queryMatch[1].replace(/\+/g, ' ')).replace(/\s+/g, ' ').trim();
+    if (decoded) {
+      return decoded;
+    }
+  }
+
+  return null;
+}
+
+function resolveUserAgent(headers: HeadersInit): string {
+  if (headers instanceof Headers) {
+    return headers.get('user-agent') || DEFAULT_USER_AGENT;
+  }
+
+  if (Array.isArray(headers)) {
+    for (const [key, value] of headers) {
+      if (String(key).toLowerCase() === 'user-agent') {
+        return String(value);
+      }
+    }
+    return DEFAULT_USER_AGENT;
+  }
+
+  if (headers && typeof headers === 'object') {
+    for (const [key, value] of Object.entries(headers as Record<string, string>)) {
+      if (String(key).toLowerCase() === 'user-agent' && value) {
+        return String(value);
+      }
+    }
+  }
+
+  return DEFAULT_USER_AGENT;
+}
+
+async function resolveScryfallCanonicalName(nameHint: string, userAgent: string): Promise<string | null> {
+  const key = normalizeName(nameHint);
+  if (!key) {
+    return null;
+  }
+  if (scryfallNameCache.has(key)) {
+    return scryfallNameCache.get(key) || null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SCRYFALL_TIMEOUT_MS);
+  try {
+    const url = new URL(SCRYFALL_NAMED_FUZZY_URL);
+    url.searchParams.set('fuzzy', nameHint);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'user-agent': userAgent || DEFAULT_USER_AGENT
+      },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as unknown;
+    const resolved = extractScryfallCardName(payload);
+    if (resolved) {
+      scryfallNameCache.set(key, resolved);
+    }
+    return resolved;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractScryfallCardName(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const item = payload as Record<string, unknown>;
+  const name = String(item.name || '').trim();
+  return name || null;
 }

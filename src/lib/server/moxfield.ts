@@ -3,26 +3,62 @@ import { load } from 'cheerio';
 import { chromium } from 'playwright';
 
 import type { CardMap, MoxfieldDeck } from './types';
-import { DEFAULT_USER_AGENT } from './utils';
+import { DEFAULT_USER_AGENT, normalizeName } from './utils';
 
 interface FetchMoxfieldOptions {
   timeoutMs?: number;
   headless?: boolean;
 }
 
+const SCRYFALL_NAMED_FUZZY_URL = 'https://api.scryfall.com/cards/named';
+const SCRYFALL_TIMEOUT_MS = 8_000;
+const scryfallNameCache = new Map<string, string>();
+const MOXFIELD_ALLOWED_HOSTS = new Set(['moxfield.com', 'www.moxfield.com']);
+
 export function extractDeckId(moxfieldUrl: string): string {
-  const match = /\/decks\/([A-Za-z0-9_-]+)/.exec(moxfieldUrl);
-  if (!match) {
-    throw new Error(`Could not parse Moxfield deck id from: ${moxfieldUrl}`);
+  const normalized = normalizeMoxfieldDeckUrl(moxfieldUrl);
+  const pathname = new URL(normalized).pathname;
+  const match = /^\/decks\/([A-Za-z0-9_-]+)/.exec(pathname);
+  if (!match?.[1]) {
+    throw new Error(`Could not parse Moxfield deck id from: ${normalized}`);
   }
   return match[1];
+}
+
+export function normalizeMoxfieldDeckUrl(value: string): string {
+  const input = String(value || '').trim();
+  if (!input) {
+    throw new Error('Moxfield URL is required');
+  }
+
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(input) ? input : `https://${input}`;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(withScheme);
+  } catch {
+    throw new Error(`Invalid Moxfield URL: ${value}`);
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  if (!MOXFIELD_ALLOWED_HOSTS.has(host)) {
+    throw new Error(`Invalid Moxfield host: ${parsed.hostname}`);
+  }
+
+  const match = /^\/decks\/([A-Za-z0-9_-]+)/.exec(parsed.pathname);
+  if (!match?.[1]) {
+    throw new Error(`Could not parse Moxfield deck id from: ${value}`);
+  }
+
+  return `https://moxfield.com/decks/${match[1]}`;
 }
 
 export async function fetchMoxfieldDeck(
   moxfieldUrl: string,
   options: FetchMoxfieldOptions = {}
 ): Promise<MoxfieldDeck> {
-  const deckId = extractDeckId(moxfieldUrl);
+  const normalizedMoxfieldUrl = normalizeMoxfieldDeckUrl(moxfieldUrl);
+  const deckId = extractDeckId(normalizedMoxfieldUrl);
   const timeoutMs = options.timeoutMs ?? 25_000;
   const headless = options.headless ?? true;
 
@@ -56,7 +92,7 @@ export async function fetchMoxfieldDeck(
       }
     });
 
-    await page.goto(moxfieldUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+    await page.goto(normalizedMoxfieldUrl, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
     await page.waitForLoadState('networkidle', { timeout: timeoutMs }).catch(() => null);
     pageHtml = await page.content();
 
@@ -90,13 +126,220 @@ export async function fetchMoxfieldDeck(
   }
 
   const cards = extractCards(getMainboardPayload(payload));
-  return {
+  const normalizedDeck = await normalizeMoxfieldDeckNames({
     deckId,
     name: String(payload.name || deckId),
-    url: moxfieldUrl,
+    url: normalizedMoxfieldUrl,
+    commanders,
+    cards
+  }, pageHtml);
+
+  return normalizedDeck;
+}
+
+async function normalizeMoxfieldDeckNames(deck: MoxfieldDeck, html: string): Promise<MoxfieldDeck> {
+  if (!html.trim()) {
+    return deck;
+  }
+
+  const aliases = await buildCanonicalAliasMapFromHtml(html);
+  if (!aliases.size) {
+    return deck;
+  }
+
+  let commanderRenamed = 0;
+  const commanders = dedupePreserveOrder(
+    deck.commanders
+      .map((name) => {
+        const canonical = aliases.get(normalizeName(name)) || name;
+        if (canonical !== name) {
+          commanderRenamed += 1;
+        }
+        return canonical;
+      })
+      .filter(Boolean)
+  );
+
+  const cards: CardMap = {};
+  let cardRenamed = 0;
+  for (const [rawName, quantity] of Object.entries(deck.cards)) {
+    const normalized = normalizeName(rawName);
+    const canonicalName = aliases.get(normalized) || rawName;
+    if (canonicalName !== rawName) {
+      cardRenamed += 1;
+    }
+    cards[canonicalName] = (cards[canonicalName] || 0) + quantity;
+  }
+
+  if (cardRenamed || commanderRenamed) {
+    console.info(
+      `Moxfield: normalized flavor names aliases=${aliases.size} cards_renamed=${cardRenamed} commanders_renamed=${commanderRenamed}`
+    );
+  }
+
+  return {
+    ...deck,
     commanders,
     cards
   };
+}
+
+async function buildCanonicalAliasMapFromHtml(html: string): Promise<Map<string, string>> {
+  const $ = load(html);
+  const flavorToHint = new Map<string, { display: string; hint: string }>();
+
+  $('a[href^="/cards/"]').each((_, anchor) => {
+    const href = String($(anchor).attr('href') || '').trim();
+    const displayName = $(anchor).text().replace(/\s+/g, ' ').trim();
+    const canonicalHint = extractCardNameHintFromHref(href);
+    if (!displayName || !canonicalHint) {
+      return;
+    }
+
+    const displayNorm = normalizeName(displayName);
+    const hintNorm = normalizeName(canonicalHint);
+    if (!displayNorm || !hintNorm || displayNorm === hintNorm) {
+      return;
+    }
+    if (!flavorToHint.has(displayNorm)) {
+      flavorToHint.set(displayNorm, { display: displayName, hint: canonicalHint });
+    }
+  });
+
+  if (!flavorToHint.size) {
+    return new Map<string, string>();
+  }
+
+  const hintToCanonical = new Map<string, string>();
+  await Promise.all(
+    [...new Set([...flavorToHint.values()].map((entry) => entry.hint))].map(async (hint) => {
+      const canonical = await resolveScryfallCanonicalName(hint);
+      hintToCanonical.set(hint, canonical || hint);
+    })
+  );
+
+  const aliases = new Map<string, string>();
+  for (const [displayNorm, entry] of flavorToHint.entries()) {
+    const canonical = hintToCanonical.get(entry.hint);
+    if (!canonical) {
+      continue;
+    }
+    const preferred = choosePreferredCanonicalName(entry.display, canonical);
+    if (!preferred || normalizeName(preferred) === displayNorm) {
+      continue;
+    }
+    aliases.set(displayNorm, preferred);
+  }
+
+  return aliases;
+}
+
+function choosePreferredCanonicalName(displayName: string, resolvedName: string): string {
+  const normalizedDisplay = normalizeName(displayName);
+  const faces = resolvedName
+    .split(/\s*\/\/\s*/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  if (!faces.length) {
+    return resolvedName;
+  }
+  if (faces.length === 1 || !normalizedDisplay) {
+    return faces[0];
+  }
+
+  for (const face of faces) {
+    if (normalizeName(face) === normalizedDisplay) {
+      return face;
+    }
+  }
+  for (const face of faces) {
+    const normalizedFace = normalizeName(face);
+    if (!normalizedFace) {
+      continue;
+    }
+    if (normalizedFace.includes(normalizedDisplay) || normalizedDisplay.includes(normalizedFace)) {
+      return face;
+    }
+  }
+
+  return faces[0];
+}
+
+function extractCardNameHintFromHref(href: string): string | null {
+  if (!href) {
+    return null;
+  }
+
+  const match = href.match(/^\/cards\/[A-Za-z0-9]+-([A-Za-z0-9-]+)$/);
+  if (!match || !match[1]) {
+    return null;
+  }
+
+  return match[1]
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+async function resolveScryfallCanonicalName(nameHint: string): Promise<string | null> {
+  const key = normalizeName(nameHint);
+  if (!key) {
+    return null;
+  }
+  if (scryfallNameCache.has(key)) {
+    return scryfallNameCache.get(key) || null;
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SCRYFALL_TIMEOUT_MS);
+  try {
+    const url = new URL(SCRYFALL_NAMED_FUZZY_URL);
+    url.searchParams.set('fuzzy', nameHint);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'user-agent': process.env.MOXFIELD_USER_AGENT?.trim() || DEFAULT_USER_AGENT
+      },
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const payload = (await response.json()) as unknown;
+    const resolved = extractScryfallCardName(payload);
+    if (resolved) {
+      scryfallNameCache.set(key, resolved);
+    }
+    return resolved;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function extractScryfallCardName(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const item = payload as Record<string, unknown>;
+  const name = String(item.name || '').trim();
+  return name || null;
+}
+
+function dedupePreserveOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values) {
+    if (seen.has(value)) {
+      continue;
+    }
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
 }
 
 function extractCards(boardPayload: unknown): CardMap {

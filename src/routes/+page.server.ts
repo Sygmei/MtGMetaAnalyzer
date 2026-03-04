@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 
 import { saveAnalysisRun } from '$lib/server/analysis-runs-repo';
+import { normalizeMoxfieldDeckUrl } from '$lib/server/moxfield';
 import { getTraceId, withSpan } from '$lib/server/otel';
 import { completeProgress, failProgress, initProgress, updateProgress } from '$lib/server/progress';
 import { analyzeFromMoxfieldUrl } from '$lib/server/pipeline';
@@ -42,6 +43,19 @@ export const actions: Actions = {
       }
       return fail(400, {
         error: 'Moxfield URL is required',
+        values: { ...DEFAULT_VALUES, ...values }
+      });
+    }
+    let normalizedMoxfieldUrl = '';
+    try {
+      normalizedMoxfieldUrl = normalizeMoxfieldDeckUrl(values.moxfieldUrl);
+      values.moxfieldUrl = normalizedMoxfieldUrl;
+    } catch {
+      if (progressId) {
+        await failProgress(progressId, 'Invalid Moxfield URL');
+      }
+      return fail(400, {
+        error: 'Invalid Moxfield URL. Use moxfield.com/decks/<id>',
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -99,14 +113,14 @@ export const actions: Actions = {
         'analysis.execute',
         {
           'analysis.client_ip': clientIp,
-          'analysis.moxfield_url': values.moxfieldUrl
+          'analysis.moxfield_url': normalizedMoxfieldUrl
         },
         (span) => {
           analysisTraceId = getTraceId(span);
-          console.info(`[analysis] start trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`);
+          console.info(`[analysis] start trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl}`);
 
           return analyzeFromMoxfieldUrl({
-            moxfieldUrl: values.moxfieldUrl,
+            moxfieldUrl: normalizedMoxfieldUrl,
             startDate,
             endDate,
             keepTop,
@@ -128,7 +142,7 @@ export const actions: Actions = {
       );
       const shareId = await withSpan('analysis.persist', { 'analysis.client_ip': clientIp }, (span) =>
         saveAnalysisRun({
-          moxfieldUrl: values.moxfieldUrl,
+          moxfieldUrl: normalizedMoxfieldUrl,
           clientIp,
           traceId: span.spanContext().traceId,
           output,
@@ -153,7 +167,7 @@ export const actions: Actions = {
         await completeProgress(progressId);
       }
       console.info(
-        `[analysis] success trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${values.moxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
+        `[analysis] success trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
       );
 
       return {
@@ -162,7 +176,7 @@ export const actions: Actions = {
       };
     } catch (error) {
       console.error(
-        `[analysis] failed trace_id=${analysisTraceId === 'none' ? getTraceId() : analysisTraceId} ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`,
+        `[analysis] failed trace_id=${analysisTraceId === 'none' ? getTraceId() : analysisTraceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl || values.moxfieldUrl}`,
         error
       );
       if (progressId) {

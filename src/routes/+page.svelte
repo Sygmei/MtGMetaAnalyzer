@@ -289,7 +289,11 @@
         <span>Moxfield deck URL</span>
         <input
           name="moxfieldUrl"
-          type="url"
+          type="text"
+          inputmode="url"
+          autocapitalize="off"
+          autocorrect="off"
+          spellcheck="false"
           required
           placeholder="https://www.moxfield.com/decks/..."
           value={values.moxfieldUrl}
