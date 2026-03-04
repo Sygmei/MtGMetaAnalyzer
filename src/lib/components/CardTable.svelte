@@ -152,9 +152,9 @@
     <table>
       <thead>
         <tr>
-          <th>Card</th>
-          <th>Decks</th>
-          <th>Ratio</th>
+          <th class="col-card">Card</th>
+          <th class="col-decks">Decks</th>
+          <th class="col-ratio">Ratio</th>
         </tr>
       </thead>
       <tbody>
@@ -179,8 +179,8 @@
                 {/if}
               </button>
             </td>
-            <td>{row.decksWithCard} / {row.totalDecks}</td>
-            <td>{toPercent(row.ratio)}</td>
+            <td class="decks-cell">{row.decksWithCard} / {row.totalDecks}</td>
+            <td class="ratio-cell">{toPercent(row.ratio)}</td>
           </tr>
         {/each}
       </tbody>
@@ -229,14 +229,32 @@
     width: 100%;
     border-collapse: collapse;
     font-size: 0.9rem;
+    table-layout: fixed;
   }
 
   th,
   td {
     text-align: left;
     padding: 0.57rem 0.65rem;
-    white-space: nowrap;
+    white-space: normal;
     border-bottom: 1px solid rgba(166, 206, 225, 0.13);
+    vertical-align: top;
+  }
+
+  .col-card {
+    width: auto;
+  }
+
+  .col-decks,
+  .decks-cell {
+    width: 7rem;
+    white-space: nowrap;
+  }
+
+  .col-ratio,
+  .ratio-cell {
+    width: 5rem;
+    white-space: nowrap;
   }
 
   thead th {
@@ -268,7 +286,7 @@
   }
 
   .card-cell {
-    max-width: 1px;
+    min-width: 0;
   }
 
   .card-link {
@@ -282,8 +300,10 @@
     font-weight: inherit;
     line-height: 1.25;
     display: inline-flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 0.35rem;
+    white-space: normal;
+    width: 100%;
   }
 
   .card-link:hover,
@@ -295,6 +315,8 @@
 
   .card-name {
     color: inherit;
+    overflow-wrap: anywhere;
+    word-break: break-word;
   }
 
   .banned-name {
@@ -443,6 +465,20 @@
   }
 
   @media (max-width: 860px) {
+    table {
+      font-size: 0.84rem;
+    }
+
+    .col-decks,
+    .decks-cell {
+      width: 6rem;
+    }
+
+    .col-ratio,
+    .ratio-cell {
+      width: 4.3rem;
+    }
+
     .preview {
       right: 0.65rem;
       top: auto;

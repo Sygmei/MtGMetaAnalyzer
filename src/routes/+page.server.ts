@@ -1,6 +1,7 @@
 import { fail } from '@sveltejs/kit';
 
 import { saveAnalysisRun } from '$lib/server/analysis-runs-repo';
+import { withSpan } from '$lib/server/otel';
 import { completeProgress, failProgress, initProgress, updateProgress } from '$lib/server/progress';
 import { analyzeFromMoxfieldUrl } from '$lib/server/pipeline';
 import { parseDate } from '$lib/server/utils';
@@ -17,8 +18,10 @@ const DEFAULT_VALUES = {
 };
 
 export const actions: Actions = {
-  default: async ({ request }) => {
+  default: async (event) => {
+    const { request } = event;
     const formData = await request.formData();
+    const clientIp = resolveClientIp(event);
 
     const values = {
       moxfieldUrl: String(formData.get('moxfieldUrl') || '').trim(),
@@ -91,36 +94,49 @@ export const actions: Actions = {
     }
 
     try {
-      const output = await analyzeFromMoxfieldUrl({
-        moxfieldUrl: values.moxfieldUrl,
-        startDate,
-        endDate,
-        keepTop,
-        cutTop,
-        addTop,
-        refreshCache: false,
-        headless: true,
-        onProgress: progressId
-          ? (event) => {
-              updateProgress(progressId, {
-                stage: event.stage,
-                percent: event.percentHint,
-                message: event.message
-              });
-            }
-          : undefined
-      });
-      const shareId = await saveAnalysisRun({
-        moxfieldUrl: values.moxfieldUrl,
-        output,
-        input: {
-          startDate: values.startDate,
-          endDate: values.endDate,
-          keepTop: values.keepTop,
-          cutTop: values.cutTop,
-          addTop: values.addTop
-        }
-      });
+      console.info(`[analysis] start ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`);
+      const output = await withSpan(
+        'analysis.execute',
+        {
+          'analysis.client_ip': clientIp,
+          'analysis.moxfield_url': values.moxfieldUrl
+        },
+        () =>
+          analyzeFromMoxfieldUrl({
+            moxfieldUrl: values.moxfieldUrl,
+            startDate,
+            endDate,
+            keepTop,
+            cutTop,
+            addTop,
+            refreshCache: false,
+            headless: true,
+            onProgress: progressId
+              ? (event) => {
+                  updateProgress(progressId, {
+                    stage: event.stage,
+                    percent: event.percentHint,
+                    message: event.message
+                  });
+                }
+              : undefined
+          })
+      );
+      const shareId = await withSpan('analysis.persist', { 'analysis.client_ip': clientIp }, (span) =>
+        saveAnalysisRun({
+          moxfieldUrl: values.moxfieldUrl,
+          clientIp,
+          traceId: span.spanContext().traceId,
+          output,
+          input: {
+            startDate: values.startDate,
+            endDate: values.endDate,
+            keepTop: values.keepTop,
+            cutTop: values.cutTop,
+            addTop: values.addTop
+          }
+        })
+      );
       const shareUrl = new URL(`/analysis/${shareId}`, request.url).toString();
       const outputWithShare = {
         ...output,
@@ -132,17 +148,21 @@ export const actions: Actions = {
       if (progressId) {
         completeProgress(progressId);
       }
+      console.info(
+        `[analysis] success ip=${clientIp} moxfieldUrl=${values.moxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
+      );
 
       return {
         values: { ...DEFAULT_VALUES, ...values },
         output: outputWithShare
       };
     } catch (error) {
+      console.error(`[analysis] failed ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`, error);
       if (progressId) {
-        failProgress(progressId, error instanceof Error ? error.message : 'Unexpected error during analysis');
+        failProgress(progressId, 'Analysis failed. Please retry.');
       }
       return fail(500, {
-        error: error instanceof Error ? error.message : 'Unexpected error during analysis',
+        error: 'Analysis failed. Please retry.',
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -155,4 +175,39 @@ function parsePositiveInt(raw: string, fieldName: string): number | string {
     return `${fieldName} must be a positive integer`;
   }
   return value;
+}
+
+function resolveClientIp(event: Parameters<Actions['default']>[0]): string {
+  const headers = event.request.headers;
+  const forwarded = headers.get('x-forwarded-for');
+  if (forwarded) {
+    const first = forwarded
+      .split(',')
+      .map((item) => item.trim())
+      .find(Boolean);
+    if (first) {
+      return first;
+    }
+  }
+
+  const realIp = headers.get('x-real-ip');
+  if (realIp?.trim()) {
+    return realIp.trim();
+  }
+
+  const cfIp = headers.get('cf-connecting-ip');
+  if (cfIp?.trim()) {
+    return cfIp.trim();
+  }
+
+  try {
+    const addr = event.getClientAddress();
+    if (addr?.trim()) {
+      return addr.trim();
+    }
+  } catch {
+    // getClientAddress may be unavailable depending on runtime/proxy setup.
+  }
+
+  return 'unknown';
 }

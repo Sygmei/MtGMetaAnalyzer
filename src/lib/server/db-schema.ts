@@ -51,6 +51,8 @@ export const analysisRuns = pgTable(
     id: bigserial('id', { mode: 'number' }).primaryKey(),
     shareId: text('share_id').notNull(),
     moxfieldUrl: text('moxfield_url').notNull(),
+    clientIp: text('client_ip').notNull().default('unknown'),
+    traceId: text('trace_id'),
     payloadJson: jsonb('payload_json').$type<AnalyzeOutput>().notNull(),
     inputJson: jsonb('input_json')
       .$type<{

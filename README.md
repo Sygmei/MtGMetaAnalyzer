@@ -32,7 +32,12 @@ Create `.env` with:
 DATABASE_URL_RW=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
 DATABASE_URL_RO=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
 DATABASE_URL_ADMIN=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
+OTEL_ENABLED=false
+OTEL_SERVICE_NAME=mtg-meta-analyzer-web
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
+
+When `OTEL_ENABLED=true`, the app exports traces to `${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces`.
 
 ## Setup
 

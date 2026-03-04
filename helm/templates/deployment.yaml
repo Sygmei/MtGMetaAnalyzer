@@ -5,6 +5,11 @@ metadata:
   name: "mtgmetaanalyzer-deployment"
 spec:
   replicas: {{ .Values.replicaCount }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: "mtgmetaanalyzer"
@@ -52,6 +57,10 @@ spec:
               value: "60"
             - name: MIGRATE_RETRY_DELAY_SECONDS
               value: "2"
+            - name: OTEL_ENABLED
+              value: "false"
+            - name: OTEL_SERVICE_NAME
+              value: "mtg-meta-analyzer-web"
             - name: DATABASE_URL_RW
               valueFrom:
                 secretKeyRef:
@@ -67,6 +76,8 @@ spec:
                 secretKeyRef:
                   name: postgresql-credentials
                   key: connection-string-admin
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "alloy.observability.svc.cluster.local:4317"
           livenessProbe:
             httpGet:
               path: /
@@ -85,8 +96,8 @@ spec:
             failureThreshold: 6
           resources:
             requests:
-              cpu: "500m"
+              cpu: "250m"
               memory: "1Gi"
             limits:
-              cpu: "2000m"
+              cpu: "500m"
               memory: "2Gi"

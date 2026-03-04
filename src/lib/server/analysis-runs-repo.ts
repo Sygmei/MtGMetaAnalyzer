@@ -15,6 +15,8 @@ interface AnalysisInputSnapshot {
 
 interface SaveAnalysisRunInput {
   moxfieldUrl: string;
+  clientIp: string;
+  traceId?: string | null;
   output: AnalyzeOutput;
   input: AnalysisInputSnapshot;
 }
@@ -28,6 +30,8 @@ export async function saveAnalysisRun(input: SaveAnalysisRunInput): Promise<stri
       await db.insert(analysisRuns).values({
         shareId,
         moxfieldUrl: input.moxfieldUrl,
+        clientIp: input.clientIp,
+        traceId: input.traceId ?? null,
         payloadJson: input.output,
         inputJson: input.input
       });
@@ -45,6 +49,8 @@ export async function saveAnalysisRun(input: SaveAnalysisRunInput): Promise<stri
 export async function findAnalysisRunByShareId(shareId: string): Promise<{
   shareId: string;
   moxfieldUrl: string;
+  clientIp: string;
+  traceId: string | null;
   createdAt: string;
   payload: AnalyzeOutput;
   input: AnalysisInputSnapshot;
@@ -54,6 +60,8 @@ export async function findAnalysisRunByShareId(shareId: string): Promise<{
     .select({
       shareId: analysisRuns.shareId,
       moxfieldUrl: analysisRuns.moxfieldUrl,
+      clientIp: analysisRuns.clientIp,
+      traceId: analysisRuns.traceId,
       createdAt: analysisRuns.createdAt,
       payloadJson: analysisRuns.payloadJson,
       inputJson: analysisRuns.inputJson
@@ -70,6 +78,8 @@ export async function findAnalysisRunByShareId(shareId: string): Promise<{
   return {
     shareId: row.shareId,
     moxfieldUrl: row.moxfieldUrl,
+    clientIp: row.clientIp,
+    traceId: row.traceId,
     createdAt: asIsoString(row.createdAt),
     payload: row.payloadJson,
     input: row.inputJson
