@@ -1,5 +1,3 @@
-import { broadcastProgressUpdate, ensureProgressWebSocketServer } from './progress-ws';
-
 export type ProgressStage = 'queued' | 'moxfield' | 'commander' | 'mtgtop8' | 'analysis' | 'done' | 'error';
 
 export interface ProgressState {
@@ -22,7 +20,6 @@ const TTL_MS = 30 * 60 * 1000;
 const store = new Map<string, ProgressRecord>();
 
 export async function initProgress(id: string): Promise<ProgressState> {
-  ensureProgressWebSocketServer();
   cleanupExpired();
   const now = new Date().toISOString();
   const state: ProgressState = {
@@ -39,7 +36,6 @@ export async function initProgress(id: string): Promise<ProgressState> {
     state,
     expiresAtMs: Date.now() + TTL_MS
   });
-  broadcastProgressUpdate(state);
   return state;
 }
 
@@ -47,7 +43,6 @@ export async function updateProgress(
   id: string,
   patch: Partial<Pick<ProgressState, 'stage' | 'percent' | 'message' | 'done' | 'error'>>
 ): Promise<ProgressState | null> {
-  ensureProgressWebSocketServer();
   cleanupExpired();
   const record = store.get(id);
   if (!record) {
@@ -67,7 +62,6 @@ export async function updateProgress(
   };
   record.state.updatedAt = now;
   record.expiresAtMs = Date.now() + TTL_MS;
-  broadcastProgressUpdate(record.state);
   return record.state;
 }
 

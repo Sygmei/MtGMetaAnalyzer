@@ -6,6 +6,10 @@ metadata:
     traefik.ingress.kubernetes.io/router.middlewares: "{{ .Release.Namespace }}-https-redirect-mw@kubernetescrd"
     traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
     traefik.ingress.kubernetes.io/service.sticky.cookie.name: "mtgmeta-affinity"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.domain: "{{ .Values.ingress.domain }}"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.path: "/"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.maxage: "10800"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.httponly: "true"
     traefik.ingress.kubernetes.io/service.sticky.cookie.secure: "true"
     traefik.ingress.kubernetes.io/service.sticky.cookie.samesite: "lax"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
@@ -27,13 +31,6 @@ spec:
                 name: mtgmetaanalyzer-service
                 port:
                   number: 3000
-          - path: /progress
-            pathType: Prefix
-            backend:
-              service:
-                name: mtgmetaanalyzer-service
-                port:
-                  number: 3210
 
     - host: "www.{{ .Values.ingress.domain }}"
       http:
@@ -45,10 +42,3 @@ spec:
                 name: mtgmetaanalyzer-service
                 port:
                   number: 3000
-          - path: /progress
-            pathType: Prefix
-            backend:
-              service:
-                name: mtgmetaanalyzer-service
-                port:
-                  number: 3210

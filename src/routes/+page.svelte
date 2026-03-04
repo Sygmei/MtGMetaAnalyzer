@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { env } from "$env/dynamic/public";
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import type { SubmitFunction } from "@sveltejs/kit";
@@ -83,12 +82,7 @@
   let progressMessage = "Preparing request...";
   let progressStageLabel = "Queued";
   let progressRequestId = "";
-  let progressSocket: WebSocket | null = null;
-  let progressSocketConnected = false;
   let progressPollTimer: ReturnType<typeof setInterval> | null = null;
-  let progressReconnectTimer: ReturnType<typeof setTimeout> | null = null;
-  let progressSocketAttempts = 0;
-  let lastProgressEventAt = 0;
   let currentProgressId = "";
 
   type ProgressPayload = {
@@ -114,16 +108,12 @@
     progress = 2;
     progressStageLabel = "Queued";
     progressMessage = "Preparing request...";
-    lastProgressEventAt = Date.now();
-    progressSocketAttempts = 0;
-    closeProgressTransport();
+    stopProgressPolling();
     startProgressPolling(id);
-    openProgressSocket(id);
   }
 
   function stopProgress(): void {
-    closeProgressTransport();
-    progressSocketAttempts = 0;
+    stopProgressPolling();
     progress = 100;
     progressMessage = "Finalizing results...";
     progressStageLabel = "Done";
@@ -140,13 +130,11 @@
     if (parsed.id !== currentProgressId) {
       return;
     }
-    lastProgressEventAt = Date.now();
     progress = Math.max(progress, Math.min(100, parsed.percent));
     progressMessage = parsed.error || parsed.message;
     progressStageLabel = mapStageLabel(parsed.stage);
     if (parsed.done) {
       stopProgressPolling();
-      closeProgressSocket();
     }
   }
 
@@ -170,13 +158,11 @@
     if (!id || id !== currentProgressId || typeof window === "undefined") {
       return;
     }
-    if (progressSocketConnected && Date.now() - lastProgressEventAt < 4000) {
-      return;
-    }
 
     try {
       const response = await fetch(`/api/progress/${encodeURIComponent(id)}`, {
         cache: "no-store",
+        credentials: "include",
       });
       if (!response.ok) {
         return;
@@ -188,142 +174,6 @@
       applyProgressState(payload as ProgressPayload);
     } catch {
       // keep polling until the request resolves
-    }
-  }
-
-  function scheduleSocketReconnect(id: string): void {
-    if (!isSubmitting || currentProgressId !== id) {
-      return;
-    }
-    if (progressReconnectTimer) {
-      clearTimeout(progressReconnectTimer);
-      progressReconnectTimer = null;
-    }
-    progressSocketAttempts += 1;
-    const delayMs = Math.min(4500, 400 * 2 ** Math.max(0, progressSocketAttempts - 1));
-    progressReconnectTimer = setTimeout(() => {
-      progressReconnectTimer = null;
-      if (!isSubmitting || currentProgressId !== id || progressSocketConnected) {
-        return;
-      }
-      openProgressSocket(id);
-    }, delayMs);
-  }
-
-  function openProgressSocket(id: string): void {
-    if (typeof window === "undefined") {
-      return;
-    }
-    closeProgressSocket();
-    const url = progressWebSocketUrl();
-
-    try {
-      const socket = new WebSocket(url);
-      progressSocket = socket;
-      socket.onopen = () => {
-        if (currentProgressId !== id) {
-          try {
-            socket.close();
-          } catch {
-            // ignore close errors
-          }
-          return;
-        }
-        progressSocketConnected = true;
-        progressSocketAttempts = 0;
-        socket.send(
-          JSON.stringify({
-            type: "subscribe",
-            progressId: id,
-          }),
-        );
-        void pollProgress(id);
-      };
-
-      socket.onmessage = (event) => {
-        const parsed = parseProgressMessage(event.data);
-        if (!parsed) {
-          return;
-        }
-        applyProgressState(parsed);
-      };
-
-      socket.onclose = () => {
-        const shouldReconnect = progressSocket === socket;
-        if (progressSocket === socket) {
-          progressSocket = null;
-        }
-        progressSocketConnected = false;
-        if (shouldReconnect) {
-          scheduleSocketReconnect(id);
-        }
-      };
-
-      socket.onerror = () => {
-        progressSocketConnected = false;
-      };
-    } catch {
-      progressSocketConnected = false;
-      scheduleSocketReconnect(id);
-    }
-  }
-
-  function closeProgressSocket(): void {
-    progressSocketConnected = false;
-    if (progressReconnectTimer) {
-      clearTimeout(progressReconnectTimer);
-      progressReconnectTimer = null;
-    }
-    if (!progressSocket) {
-      return;
-    }
-    const socket = progressSocket;
-    progressSocket = null;
-    try {
-      socket.close();
-    } catch {
-      // ignore close errors
-    }
-  }
-
-  function closeProgressTransport(): void {
-    stopProgressPolling();
-    closeProgressSocket();
-  }
-
-  function progressWebSocketUrl(): string {
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const host = window.location.hostname;
-    const configuredPort = (env.PUBLIC_PROGRESS_WS_PORT || "").trim();
-    const browserPort = window.location.port;
-    const portSegment = configuredPort
-      ? `:${configuredPort}`
-      : browserPort
-        ? `:${browserPort}`
-        : "";
-    return `${protocol}://${host}${portSegment}/progress`;
-  }
-
-  function parseProgressMessage(payload: unknown): ProgressPayload | null {
-    if (typeof payload !== "string") {
-      return null;
-    }
-    try {
-      const parsed = JSON.parse(payload) as unknown;
-      if (!parsed || typeof parsed !== "object") {
-        return null;
-      }
-      const envelope = parsed as { type?: unknown; state?: unknown };
-      if (
-        envelope.type !== "progress" ||
-        !envelope.state ||
-        typeof envelope.state !== "object"
-      ) {
-        return null;
-      }
-      return envelope.state as ProgressPayload;
-    } catch {
-      return null;
     }
   }
 
@@ -357,7 +207,7 @@
 
       const shareUrl = extractShareUrl(result);
       if (shareUrl) {
-        closeProgressTransport();
+        stopProgressPolling();
         progress = 100;
         progressStageLabel = "Done";
         progressMessage = "Opening shared permalink...";
@@ -398,7 +248,7 @@
   }
 
   onDestroy(() => {
-    closeProgressTransport();
+    stopProgressPolling();
   });
 </script>
 
@@ -415,11 +265,7 @@
     <section class="progress-shell" aria-live="polite" aria-busy="true">
       <div class="progress-head">
         <p>Analyzing Deck ({progressStageLabel})</p>
-        <span
-          >{Math.round(progress)}% {progressSocketConnected
-            ? "(live)"
-            : ""}</span
-        >
+        <span>{Math.round(progress)}%</span>
       </div>
       <div class="progress-track">
         <div class="progress-fill" style={`width:${progress}%`}></div>

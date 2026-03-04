@@ -13,9 +13,5 @@ spec:
       port: 3000
       targetPort: http
       protocol: TCP
-    - name: ws
-      port: 3210
-      targetPort: ws
-      protocol: TCP
   selector:
     app: mtgmetaanalyzer

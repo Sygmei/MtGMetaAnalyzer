@@ -19,7 +19,6 @@
     "@sveltejs/kit": "^2.53.4",
     "@sveltejs/vite-plugin-svelte": "^6.2.0",
     "@types/node": "^22.10.0",
-    "@types/ws": "^8.18.1",
     "drizzle-kit": "^0.31.4",
     "svelte": "^5.39.6",
     "svelte-check": "^4.3.1",
@@ -35,7 +34,6 @@
     "cheerio": "^1.0.0",
     "drizzle-orm": "^0.44.5",
     "playwright": "^1.55.0",
-    "postgres": "^3.4.7",
-    "ws": "^8.19.0"
+    "postgres": "^3.4.7"
   }
 }

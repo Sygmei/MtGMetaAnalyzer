@@ -39,9 +39,6 @@ spec:
             - name: http
               containerPort: 3000
               protocol: TCP
-            - name: ws
-              containerPort: 3210
-              protocol: TCP
           env:
             - name: NODE_ENV
               value: "production"
@@ -49,28 +46,26 @@ spec:
               value: "0.0.0.0"
             - name: PORT
               value: "3000"
-            - name: PROGRESS_WS_PORT
-              value: "3210"
-            - name: PUBLIC_PROGRESS_WS_PORT
-              value: ""
             - name: MIGRATE_MAX_ATTEMPTS
               value: "60"
             - name: MIGRATE_RETRY_DELAY_SECONDS
               value: "2"
             - name: OTEL_ENABLED
-              value: "true"
+              value: {{ .Values.otel.enabled | quote }}
             - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "alloy.observability.svc.cluster.local:4318"
+              value: {{ .Values.otel.endpoint | quote }}
+            - name: OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+              value: {{ .Values.otel.tracesEndpoint | quote }}
             - name: OTEL_SERVICE_NAME
-              value: "mtg-meta-analyzer-web"
+              value: {{ .Values.otel.serviceName | quote }}
             - name: PUBLIC_FARO_ENABLED
-              value: "false"
+              value: {{ .Values.faro.enabled | quote }}
             - name: PUBLIC_FARO_URL
-              value: "https://faro.obencorp.dev/collect"
+              value: {{ .Values.faro.endpoint | quote }}
             - name: PUBLIC_FARO_APP_NAME
-              value: "mtg-meta-analyzer-web"
+              value: {{ .Values.faro.appName | quote }}
             - name: PUBLIC_FARO_APP_VERSION
-              value: "{{ .Values.version }}"
+              value: {{ .Values.faro.appVersion | default .Values.version | quote }}
             - name: DATABASE_URL_RW
               valueFrom:
                 secretKeyRef:

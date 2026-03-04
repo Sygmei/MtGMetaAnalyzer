@@ -1,5 +1,18 @@
-version: "1.3.1"
+version: "1.3.2"
 replicaCount: 2
 ingress:
   enabled: true
   domain: "mtgmeta.obencorp.dev"
+otel:
+  enabled: true
+  serviceName: "mtg-meta-analyzer-web"
+  # Base OTLP HTTP endpoint (for example: "http://alloy.observability.svc.cluster.local:4318")
+  endpoint: "http://alloy.observability.svc.cluster.local:4318"
+  # Optional explicit traces endpoint. Leave empty to use endpoint + /v1/traces.
+  tracesEndpoint: ""
+faro:
+  enabled: false
+  endpoint: "https://faro.obencorp.dev/collect"
+  appName: "mtg-meta-analyzer-web"
+  # Leave empty to default to .Values.version
+  appVersion: ""
