@@ -23,6 +23,7 @@ export const actions: Actions = {
     const { request } = event;
     const formData = await request.formData();
     const clientIp = resolveClientIp(event);
+    const requestTraceId = getTraceId();
 
     const values = {
       moxfieldUrl: String(formData.get('moxfieldUrl') || '').trim(),
@@ -43,6 +44,7 @@ export const actions: Actions = {
       }
       return fail(400, {
         error: 'Moxfield URL is required',
+        traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -56,6 +58,7 @@ export const actions: Actions = {
       }
       return fail(400, {
         error: 'Invalid Moxfield URL. Use moxfield.com/decks/<id>',
+        traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -70,6 +73,7 @@ export const actions: Actions = {
       }
       return fail(400, {
         error: [keepTop, cutTop, addTop].find((item) => typeof item === 'string'),
+        traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -83,6 +87,7 @@ export const actions: Actions = {
       }
       return fail(400, {
         error: 'Invalid start date. Use YYYY-MM-DD',
+        traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -93,6 +98,7 @@ export const actions: Actions = {
       }
       return fail(400, {
         error: 'Invalid end date. Use YYYY-MM-DD',
+        traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -103,6 +109,7 @@ export const actions: Actions = {
       }
       return fail(400, {
         error: 'Start date must be before or equal to end date',
+        traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
@@ -182,8 +189,10 @@ export const actions: Actions = {
       if (progressId) {
         await failProgress(progressId, 'Analysis failed. Please retry.');
       }
+      const traceId = analysisTraceId === 'none' ? requestTraceId : analysisTraceId;
       return fail(500, {
         error: 'Analysis failed. Please retry.',
+        traceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }

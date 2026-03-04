@@ -10,6 +10,7 @@
   export let form:
     | {
         error?: string;
+        traceId?: string;
         values?: {
           moxfieldUrl: string;
           startDate: string;
@@ -354,6 +355,9 @@
 
     {#if form?.error}
       <p class="error">{form.error}</p>
+      {#if form?.traceId && form.traceId !== "none"}
+        <p class="error-trace">Trace ID: <code>{form.traceId}</code></p>
+      {/if}
     {/if}
   </section>
 
@@ -746,6 +750,12 @@
     margin: 0.25rem 0 0;
     color: #ffb3a9;
     font-weight: 700;
+  }
+
+  .error-trace {
+    margin: 0.2rem 0 0;
+    color: #ffd2cb;
+    font-size: 0.84rem;
   }
 
   .info {
