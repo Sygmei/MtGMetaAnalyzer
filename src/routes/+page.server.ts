@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+
 import { fail } from '@sveltejs/kit';
 
 import { saveAnalysisRun } from '$lib/server/analysis-runs-repo';
@@ -23,7 +25,7 @@ export const actions: Actions = {
     const { request } = event;
     const formData = await request.formData();
     const clientIp = resolveClientIp(event);
-    const requestTraceId = getTraceId();
+    const requestTraceId = ensureTraceId(getTraceId());
 
     const values = {
       moxfieldUrl: String(formData.get('moxfieldUrl') || '').trim(),
@@ -114,7 +116,7 @@ export const actions: Actions = {
       });
     }
 
-    let analysisTraceId = 'none';
+    let analysisTraceId = requestTraceId;
     try {
       const output = await withSpan(
         'analysis.execute',
@@ -182,14 +184,14 @@ export const actions: Actions = {
         output: outputWithShare
       };
     } catch (error) {
+      const traceId = ensureTraceId(analysisTraceId === 'none' ? getTraceId() : analysisTraceId);
       console.error(
-        `[analysis] failed trace_id=${analysisTraceId === 'none' ? getTraceId() : analysisTraceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl || values.moxfieldUrl}`,
+        `[analysis] failed trace_id=${traceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl || values.moxfieldUrl}`,
         error
       );
       if (progressId) {
-        await failProgress(progressId, 'Analysis failed. Please retry.');
+        await failProgress(progressId, `Analysis failed. Trace ID: ${traceId}`);
       }
-      const traceId = analysisTraceId === 'none' ? requestTraceId : analysisTraceId;
       return fail(500, {
         error: 'Analysis failed. Please retry.',
         traceId,
@@ -205,6 +207,22 @@ function parsePositiveInt(raw: string, fieldName: string): number | string {
     return `${fieldName} must be a positive integer`;
   }
   return value;
+}
+
+function ensureTraceId(value: string | null | undefined): string {
+  const candidate = String(value || '').trim();
+  if (candidate && candidate !== 'none' && !/^0+$/.test(candidate)) {
+    return candidate;
+  }
+  return `local-${safeRandomId()}`;
+}
+
+function safeRandomId(): string {
+  try {
+    return randomUUID();
+  } catch {
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  }
 }
 
 function resolveClientIp(event: Parameters<Actions['default']>[0]): string {

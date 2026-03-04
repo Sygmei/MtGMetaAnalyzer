@@ -355,7 +355,7 @@
 
     {#if form?.error}
       <p class="error">{form.error}</p>
-      {#if form?.traceId && form.traceId !== "none"}
+      {#if form?.traceId}
         <p class="error-trace">Trace ID: <code>{form.traceId}</code></p>
       {/if}
     {/if}

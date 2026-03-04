@@ -6,12 +6,15 @@ initOpenTelemetry();
 
 export const handle: Handle = async ({ event, resolve }) => {
   const clientIp = resolveClientIp(event);
+  const requestKind = classifyRequest(event.request.method, event.url.pathname);
+  const spanName = `http.${requestKind}`;
   return await withSpan(
-    'http.request',
+    spanName,
     {
       'http.method': event.request.method,
       'http.route': event.url.pathname,
-      'client.address': clientIp
+      'client.address': clientIp,
+      'app.request.kind': requestKind
     },
     async (span) => {
       const response = await resolve(event);
@@ -54,4 +57,21 @@ function resolveClientIp(event: Parameters<Handle>[0]['event']): string {
   }
 
   return 'unknown';
+}
+
+function classifyRequest(method: string, pathname: string): string {
+  const verb = method.toUpperCase();
+  if (verb === 'GET' && pathname === '/') {
+    return 'home_view';
+  }
+  if (verb === 'POST' && pathname === '/') {
+    return 'analysis_submit';
+  }
+  if (verb === 'GET' && /^\/analysis\/[^/]+$/.test(pathname)) {
+    return 'analysis_share_view';
+  }
+  if (verb === 'GET' && /^\/api\/progress\/[^/]+$/.test(pathname)) {
+    return 'analysis_progress_poll';
+  }
+  return 'other';
 }
