@@ -395,6 +395,11 @@
           </p>
         </article>
         <article>
+          <p class="k">Ignore Filters</p>
+          <p class="v">Before: {output.analysis.startDate ?? "none"}</p>
+          <p class="sub">After: {output.analysis.endDate ?? "none"}</p>
+        </article>
+        <article>
           <p class="k">Cache updates</p>
           <p class="v">+{output.cache.insertedDeckRows}</p>
           <p class="sub">

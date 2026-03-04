@@ -6,6 +6,9 @@
     shareId: string;
     shareUrl: string;
     createdAt: string;
+    commanderName: string;
+    ignoreBefore: string | null;
+    ignoreAfter: string | null;
     output: AnalyzeOutput;
   };
 
@@ -24,6 +27,18 @@
     <p class="meta">
       Commander: {data.output.moxfieldDeck.commanders.join(' / ')} · Analyzed {new Date(data.output.analyzedAt).toLocaleString()}
     </p>
+    {#if data.ignoreBefore || data.ignoreAfter}
+      <p class="meta ignore-meta">
+        {#if data.ignoreBefore}
+          <span>Ignore MtgTop8 decks before:</span>
+          <code class="date-badge">{data.ignoreBefore}</code>
+        {/if}
+        {#if data.ignoreAfter}
+          <span>Ignore MtgTop8 decks after:</span>
+          <code class="date-badge">{data.ignoreAfter}</code>
+        {/if}
+      </p>
+    {/if}
     <p class="meta">
       Share id: <code>{data.shareId}</code>
     </p>
@@ -39,7 +54,7 @@
       <article>
         <p class="k">MtgTop8 Commander</p>
         <p class="v">
-          <a href={data.output.commander.url} target="_blank" rel="noreferrer">{data.output.commander.name}</a>
+          <a href={data.output.commander.url} target="_blank" rel="noreferrer">{data.commanderName}</a>
         </p>
       </article>
       <article>
@@ -153,6 +168,27 @@
     margin: 0.45rem 0 0;
     color: #b4c8d5;
     line-height: 1.35;
+  }
+
+  .ignore-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem 0.55rem;
+  }
+
+  .date-badge {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(129, 197, 221, 0.42);
+    border-radius: 999px;
+    padding: 0.12rem 0.55rem;
+    background: rgba(8, 23, 31, 0.55);
+    color: #d3e8f3;
+    font-family: 'JetBrains Mono', 'Fira Code', 'SFMono-Regular', Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8rem;
+    font-weight: 600;
+    line-height: 1.3;
   }
 
   code {

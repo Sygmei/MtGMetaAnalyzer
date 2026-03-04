@@ -152,6 +152,9 @@ export const actions: Actions = {
       const shareId = await withSpan('analysis.persist', { 'analysis.client_ip': clientIp }, (span) =>
         saveAnalysisRun({
           moxfieldUrl: normalizedMoxfieldUrl,
+          commanderName: output.commander.name,
+          ignoreBefore: output.analysis.startDate,
+          ignoreAfter: output.analysis.endDate,
           clientIp,
           traceId: span.spanContext().traceId,
           output,

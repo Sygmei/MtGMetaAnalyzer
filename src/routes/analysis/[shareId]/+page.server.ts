@@ -21,6 +21,9 @@ export const load: PageServerLoad = async ({ params, url }) => {
       shareId: run.shareId,
       shareUrl: url.toString(),
       createdAt: run.createdAt,
+      commanderName: run.commanderName || run.payload.commander.name,
+      ignoreBefore: run.ignoreBefore || run.payload.analysis.startDate,
+      ignoreAfter: run.ignoreAfter || run.payload.analysis.endDate,
       output: {
         ...run.payload,
         share: {
