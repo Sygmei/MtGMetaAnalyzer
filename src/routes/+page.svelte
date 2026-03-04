@@ -85,7 +85,6 @@
   let progressRequestId = "";
   let progressSocket: WebSocket | null = null;
   let progressSocketConnected = false;
-  let progressPollTimer: ReturnType<typeof setInterval> | null = null;
   let currentProgressId = "";
 
   type ProgressPayload = {
@@ -111,13 +110,12 @@
     progress = 2;
     progressStageLabel = "Queued";
     progressMessage = "Preparing request...";
-    closeProgressTransport();
-    startProgressPolling(id);
+    closeProgressSocket();
     openProgressSocket(id);
   }
 
   function stopProgress(): void {
-    closeProgressTransport();
+    closeProgressSocket();
     progress = 100;
     progressMessage = "Finalizing results...";
     progressStageLabel = "Done";
@@ -137,47 +135,6 @@
     progress = Math.max(progress, Math.min(100, parsed.percent));
     progressMessage = parsed.error || parsed.message;
     progressStageLabel = mapStageLabel(parsed.stage);
-  }
-
-  function startProgressPolling(id: string): void {
-    stopProgressPolling();
-    void pollProgress(id);
-    progressPollTimer = setInterval(() => {
-      void pollProgress(id);
-    }, 1000);
-  }
-
-  function stopProgressPolling(): void {
-    if (!progressPollTimer) {
-      return;
-    }
-    clearInterval(progressPollTimer);
-    progressPollTimer = null;
-  }
-
-  async function pollProgress(id: string): Promise<void> {
-    if (!id || id !== currentProgressId || typeof window === "undefined") {
-      return;
-    }
-
-    try {
-      const response = await fetch(`/api/progress/${encodeURIComponent(id)}`, {
-        cache: "no-store",
-      });
-      if (!response.ok) {
-        return;
-      }
-      const payload = (await response.json()) as ProgressPayload;
-      if (!payload || typeof payload !== "object") {
-        return;
-      }
-      applyProgressState(payload);
-      if (payload.done) {
-        stopProgressPolling();
-      }
-    } catch {
-      // ignore polling errors while request is in-flight
-    }
   }
 
   function openProgressSocket(id: string): void {
@@ -205,9 +162,6 @@
           return;
         }
         applyProgressState(parsed);
-        if (parsed.done) {
-          stopProgressPolling();
-        }
       };
 
       socket.onclose = () => {
@@ -221,11 +175,6 @@
       progressSocketConnected = false;
       progressMessage = "Could not connect to progress socket.";
     }
-  }
-
-  function closeProgressTransport(): void {
-    closeProgressSocket();
-    stopProgressPolling();
   }
 
   function closeProgressSocket(): void {
@@ -308,7 +257,7 @@
 
       const shareUrl = extractShareUrl(result);
       if (shareUrl) {
-        closeProgressTransport();
+        closeProgressSocket();
         progress = 100;
         progressStageLabel = "Done";
         progressMessage = "Opening shared permalink...";
@@ -349,7 +298,7 @@
   }
 
   onDestroy(() => {
-    closeProgressTransport();
+    closeProgressSocket();
   });
 </script>
 

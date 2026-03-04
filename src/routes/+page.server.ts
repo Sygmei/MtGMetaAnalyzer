@@ -33,12 +33,12 @@ export const actions: Actions = {
     };
     const progressId = String(formData.get('progressId') || '').trim();
     if (progressId) {
-      initProgress(progressId);
+      await initProgress(progressId);
     }
 
     if (!values.moxfieldUrl) {
       if (progressId) {
-        failProgress(progressId, 'Moxfield URL is required');
+        await failProgress(progressId, 'Moxfield URL is required');
       }
       return fail(400, {
         error: 'Moxfield URL is required',
@@ -52,7 +52,7 @@ export const actions: Actions = {
 
     if (typeof keepTop === 'string' || typeof cutTop === 'string' || typeof addTop === 'string') {
       if (progressId) {
-        failProgress(progressId, [keepTop, cutTop, addTop].find((item) => typeof item === 'string') || 'Invalid options');
+        await failProgress(progressId, [keepTop, cutTop, addTop].find((item) => typeof item === 'string') || 'Invalid options');
       }
       return fail(400, {
         error: [keepTop, cutTop, addTop].find((item) => typeof item === 'string'),
@@ -65,7 +65,7 @@ export const actions: Actions = {
 
     if (values.startDate && !startDate) {
       if (progressId) {
-        failProgress(progressId, 'Invalid start date. Use YYYY-MM-DD');
+        await failProgress(progressId, 'Invalid start date. Use YYYY-MM-DD');
       }
       return fail(400, {
         error: 'Invalid start date. Use YYYY-MM-DD',
@@ -75,7 +75,7 @@ export const actions: Actions = {
 
     if (values.endDate && !endDate) {
       if (progressId) {
-        failProgress(progressId, 'Invalid end date. Use YYYY-MM-DD');
+        await failProgress(progressId, 'Invalid end date. Use YYYY-MM-DD');
       }
       return fail(400, {
         error: 'Invalid end date. Use YYYY-MM-DD',
@@ -85,7 +85,7 @@ export const actions: Actions = {
 
     if (startDate && endDate && startDate > endDate) {
       if (progressId) {
-        failProgress(progressId, 'Start date must be before or equal to end date');
+        await failProgress(progressId, 'Start date must be before or equal to end date');
       }
       return fail(400, {
         error: 'Start date must be before or equal to end date',
@@ -113,7 +113,7 @@ export const actions: Actions = {
             headless: true,
             onProgress: progressId
               ? (event) => {
-                  updateProgress(progressId, {
+                  void updateProgress(progressId, {
                     stage: event.stage,
                     percent: event.percentHint,
                     message: event.message
@@ -146,7 +146,7 @@ export const actions: Actions = {
         }
       };
       if (progressId) {
-        completeProgress(progressId);
+        await completeProgress(progressId);
       }
       console.info(
         `[analysis] success ip=${clientIp} moxfieldUrl=${values.moxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
@@ -159,7 +159,7 @@ export const actions: Actions = {
     } catch (error) {
       console.error(`[analysis] failed ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`, error);
       if (progressId) {
-        failProgress(progressId, 'Analysis failed. Please retry.');
+        await failProgress(progressId, 'Analysis failed. Please retry.');
       }
       return fail(500, {
         error: 'Analysis failed. Please retry.',

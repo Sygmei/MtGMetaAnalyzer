@@ -4,6 +4,10 @@ metadata:
   name: mtgmetaanalyzer-ingress
   annotations:
     traefik.ingress.kubernetes.io/router.middlewares: "{{ .Release.Namespace }}-https-redirect-mw@kubernetescrd"
+    traefik.ingress.kubernetes.io/service.sticky.cookie: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.name: "mtgmeta-affinity"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.secure: "true"
+    traefik.ingress.kubernetes.io/service.sticky.cookie.samesite: "lax"
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: traefik

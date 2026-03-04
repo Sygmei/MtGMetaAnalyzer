@@ -21,7 +21,7 @@ interface ProgressRecord {
 const TTL_MS = 30 * 60 * 1000;
 const store = new Map<string, ProgressRecord>();
 
-export function initProgress(id: string): ProgressState {
+export async function initProgress(id: string): Promise<ProgressState> {
   ensureProgressWebSocketServer();
   cleanupExpired();
   const now = new Date().toISOString();
@@ -43,10 +43,10 @@ export function initProgress(id: string): ProgressState {
   return state;
 }
 
-export function updateProgress(
+export async function updateProgress(
   id: string,
   patch: Partial<Pick<ProgressState, 'stage' | 'percent' | 'message' | 'done' | 'error'>>
-): ProgressState | null {
+): Promise<ProgressState | null> {
   ensureProgressWebSocketServer();
   cleanupExpired();
   const record = store.get(id);
@@ -60,15 +60,19 @@ export function updateProgress(
     ...record.state,
     ...patch,
     percent: Math.max(record.state.percent, nextPercent),
-    updatedAt: now
+    message: patch.message ?? record.state.message,
+    updatedAt: new Date().toISOString(),
+    done: patch.done == null ? record.state.done : Boolean(patch.done),
+    error: patch.error == null ? record.state.error : patch.error
   };
+  record.state.updatedAt = now;
   record.expiresAtMs = Date.now() + TTL_MS;
   broadcastProgressUpdate(record.state);
   return record.state;
 }
 
-export function completeProgress(id: string, message = 'Analysis complete.'): ProgressState | null {
-  return updateProgress(id, {
+export async function completeProgress(id: string, message = 'Analysis complete.'): Promise<ProgressState | null> {
+  return await updateProgress(id, {
     stage: 'done',
     percent: 100,
     message,
@@ -77,8 +81,8 @@ export function completeProgress(id: string, message = 'Analysis complete.'): Pr
   });
 }
 
-export function failProgress(id: string, errorMessage: string): ProgressState | null {
-  return updateProgress(id, {
+export async function failProgress(id: string, errorMessage: string): Promise<ProgressState | null> {
+  return await updateProgress(id, {
     stage: 'error',
     percent: 100,
     message: 'Analysis failed.',
@@ -87,7 +91,7 @@ export function failProgress(id: string, errorMessage: string): ProgressState | 
   });
 }
 
-export function getProgress(id: string): ProgressState | null {
+export async function getProgress(id: string): Promise<ProgressState | null> {
   cleanupExpired();
   const record = store.get(id);
   if (!record) {

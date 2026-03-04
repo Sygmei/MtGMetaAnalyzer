@@ -4,6 +4,10 @@ metadata:
   name: mtgmetaanalyzer-service
 spec:
   type: ClusterIP
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
   ports:
     - name: http
       port: 3000

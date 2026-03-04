@@ -10,7 +10,7 @@ export const GET: RequestHandler = async ({ params }) => {
     return json({ error: 'Progress id is required' }, { status: 400 });
   }
 
-  const state = getProgress(id);
+  const state = await getProgress(id);
   if (!state) {
     return json({ error: 'Progress id not found' }, { status: 404 });
   }

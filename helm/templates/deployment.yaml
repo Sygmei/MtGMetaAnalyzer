@@ -66,7 +66,7 @@ spec:
             - name: PUBLIC_FARO_ENABLED
               value: "true"
             - name: PUBLIC_FARO_URL
-              value: "https://faro.obencorp.dev"
+              value: "https://faro.obencorp.dev/collect"
             - name: PUBLIC_FARO_APP_NAME
               value: "mtg-meta-analyzer-web"
             - name: PUBLIC_FARO_APP_VERSION
