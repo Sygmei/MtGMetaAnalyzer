@@ -35,9 +35,14 @@ DATABASE_URL_ADMIN=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
 OTEL_ENABLED=false
 OTEL_SERVICE_NAME=mtg-meta-analyzer-web
 OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+PUBLIC_FARO_ENABLED=false
+PUBLIC_FARO_URL=
+PUBLIC_FARO_APP_NAME=mtg-meta-analyzer-web
+PUBLIC_FARO_APP_VERSION=0.1.0
 ```
 
 When `OTEL_ENABLED=true`, the app exports traces to `${OTEL_EXPORTER_OTLP_ENDPOINT}/v1/traces`.
+When `PUBLIC_FARO_ENABLED=true`, browser telemetry is sent to `PUBLIC_FARO_URL`.
 
 ## Setup
 

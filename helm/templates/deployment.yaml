@@ -58,9 +58,19 @@ spec:
             - name: MIGRATE_RETRY_DELAY_SECONDS
               value: "2"
             - name: OTEL_ENABLED
-              value: "false"
+              value: "true"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "alloy.observability.svc.cluster.local:4317"
             - name: OTEL_SERVICE_NAME
               value: "mtg-meta-analyzer-web"
+            - name: PUBLIC_FARO_ENABLED
+              value: "true"
+            - name: PUBLIC_FARO_URL
+              value: "https://faro.obencorp.dev"
+            - name: PUBLIC_FARO_APP_NAME
+              value: "mtg-meta-analyzer-web"
+            - name: PUBLIC_FARO_APP_VERSION
+              value: "{{ .Values.version }}"
             - name: DATABASE_URL_RW
               valueFrom:
                 secretKeyRef:
@@ -76,8 +86,6 @@ spec:
                 secretKeyRef:
                   name: postgresql-credentials
                   key: connection-string-admin
-            - name: OTEL_EXPORTER_OTLP_ENDPOINT
-              value: "alloy.observability.svc.cluster.local:4317"
           livenessProbe:
             httpGet:
               path: /
