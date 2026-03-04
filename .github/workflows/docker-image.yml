@@ -1,0 +1,21 @@
+name: Docker Image CI
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u Sygmei --password-stdin
+
+      # Build and push image
+      - name: Build Docker image
+        run: docker build . --file Dockerfile --tag ghcr.io/sygmei/mtgmetaanalyzer:${{ github.event.release.tag_name }}
+
+      - name: Upload image to GHCR
+        run: docker push ghcr.io/sygmei/mtgmetaanalyzer:${{ github.event.release.tag_name }}

@@ -1,0 +1,16 @@
+.git
+.gitignore
+.env
+.env.*
+.venv
+node_modules
+.svelte-kit
+build
+dist
+coverage
+cache
+html_examples
+README.md
+LICENSE
+*.log
+*.local
