@@ -12,6 +12,9 @@ spec:
     metadata:
       labels:
         app: "mtgmetaanalyzer"
+      annotations:
+        mtgmetaanalyzer/version: "{{ .Values.version }}"
+        mtgmetaanalyzer/release-revision: "{{ .Release.Revision }}"
     spec:
       containers:
         - name: "mtgmetaanalyzer"

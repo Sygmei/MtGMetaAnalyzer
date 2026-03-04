@@ -43,7 +43,7 @@ if (!databaseUrl) {
 }
 
 const commanderSlug = getCommanderArg(args);
-const sql = postgres(databaseUrl, { max: 1 });
+const sql = postgres(databaseUrl, { max: 1, prepare: false });
 
 try {
   if (commanderSlug) {

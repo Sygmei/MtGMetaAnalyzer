@@ -99,9 +99,11 @@ Install:
 ```bash
 helm upgrade --install mtg-meta-analyzer ./helm/mtg-meta-analyzer \
   --namespace mtg-meta-analyzer --create-namespace \
-  --set version=latest \
+  --set version=1.2.0 \
   --set replicaCount=1
 ```
+
+Use a new immutable `version` tag for each deploy (do not keep `latest`) so image updates are deterministic.
 
 ## Database schema
 

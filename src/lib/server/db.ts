@@ -23,7 +23,8 @@ export function getWriteDb(): DbHandle {
   writeSqlClient = postgres(databaseUrl, {
     max: 10,
     idle_timeout: 20,
-    connect_timeout: 10
+    connect_timeout: 10,
+    prepare: false
   });
   writeDb = drizzle(writeSqlClient, { schema });
 
@@ -39,7 +40,8 @@ export function getReadDb(): DbHandle {
   readSqlClient = postgres(databaseUrl, {
     max: 10,
     idle_timeout: 20,
-    connect_timeout: 10
+    connect_timeout: 10,
+    prepare: false
   });
   readDb = drizzle(readSqlClient, { schema });
 
