@@ -58,12 +58,57 @@ npm run build
 npm run preview
 ```
 
+## Helm chart
+
+A Helm chart is available at `helm/mtg-meta-analyzer`.
+
+The chart is intentionally minimal and uses only two values:
+
+- `replicaCount`
+- `version` (container image tag for `mtg-meta-analyzer-web`)
+
+It always creates an Ingress with:
+
+- `/` routed to service port `80`
+- `/progress` routed to service port `3210`
+- TLS from cert-manager using an existing `ClusterIssuer` (`letsencrypt-prod` in template)
+
+If your domain or ClusterIssuer name differs, edit:
+
+- `helm/mtg-meta-analyzer/templates/ingress.yaml`
+
+Create the required DB secret first (fixed name: `mtg-meta-analyzer-db`):
+
+```bash
+kubectl -n mtg-meta-analyzer create secret generic mtg-meta-analyzer-db \
+  --from-literal=DATABASE_URL='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer'
+```
+
+Install:
+
+```bash
+helm upgrade --install mtg-meta-analyzer ./helm/mtg-meta-analyzer \
+  --namespace mtg-meta-analyzer --create-namespace \
+  --set version=latest \
+  --set replicaCount=1
+```
+
 ## Database schema
 
 Migrations are in `migrations/` and are applied by:
 
 ```bash
 npm run db:migrate
+```
+
+Purge MtgTop8 cache:
+
+```bash
+# purge all MtgTop8 cached commanders + decks
+npm run db:purge:mtgtop8
+
+# purge cache for one commander slug only
+npm run db:purge:mtgtop8 -- --commander=phlage-titan-of-fires-fury
 ```
 
 Main tables:

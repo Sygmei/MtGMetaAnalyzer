@@ -7,6 +7,7 @@ interface AnalyzeOptions {
   keepTop?: number;
   cutTop?: number;
   addTop?: number;
+  bannedCardsNormalized?: Set<string>;
 }
 
 export function analyzeCards(
@@ -14,9 +15,10 @@ export function analyzeCards(
   cachedDecks: DeckRecord[],
   options: AnalyzeOptions = {}
 ): AnalysisResult {
-  const keepTop = options.keepTop ?? 20;
-  const cutTop = options.cutTop ?? 20;
-  const addTop = options.addTop ?? 20;
+  const keepTop = options.keepTop ?? 50;
+  const cutTop = options.cutTop ?? 50;
+  const addTop = options.addTop ?? 50;
+  const bannedCards = options.bannedCardsNormalized || new Set<string>();
 
   const startBoundary = options.startDate ? toDateStart(options.startDate) : Number.NEGATIVE_INFINITY;
   const endBoundary = options.endDate ? toDateStart(options.endDate) : Number.POSITIVE_INFINITY;
@@ -63,19 +65,13 @@ export function analyzeCards(
   }
 
   const totalDecks = filteredDecks.length;
-  const keepCutStats: CardStat[] = moxfieldCardNames.map((card) => ({
-    card,
-    decksWithCard: frequencies[card],
-    totalDecks,
-    ratio: totalDecks > 0 ? frequencies[card] / totalDecks : 0
-  }));
+  const keepCutStats: CardStat[] = moxfieldCardNames.map((card) =>
+    buildCardStat(card, frequencies[card], totalDecks, bannedCards)
+  );
 
-  const toAddStats: CardStat[] = Object.entries(addFrequencies).map(([card, decksWithCard]) => ({
-    card,
-    decksWithCard,
-    totalDecks,
-    ratio: totalDecks > 0 ? decksWithCard / totalDecks : 0
-  }));
+  const toAddStats: CardStat[] = Object.entries(addFrequencies).map(([card, decksWithCard]) =>
+    buildCardStat(card, decksWithCard, totalDecks, bannedCards)
+  );
 
   const byDesc = (a: CardStat, b: CardStat): number => {
     if (a.decksWithCard !== b.decksWithCard) {
@@ -115,4 +111,19 @@ function deckMainboardCardSet(deck: DeckRecord, commanderNormSet: Set<string>): 
   return new Set(
     Object.keys(deck.cards).filter((name) => !commanderNormSet.has(normalizeName(name)))
   );
+}
+
+function buildCardStat(
+  card: string,
+  decksWithCard: number,
+  totalDecks: number,
+  bannedCardsNormalized: Set<string>
+): CardStat {
+  return {
+    card,
+    decksWithCard,
+    totalDecks,
+    ratio: totalDecks > 0 ? decksWithCard / totalDecks : 0,
+    banned: bannedCardsNormalized.has(normalizeName(card))
+  };
 }

@@ -11,8 +11,6 @@ interface AnalysisInputSnapshot {
   keepTop: string;
   cutTop: string;
   addTop: string;
-  refreshCache: boolean;
-  moxfieldHeaded: boolean;
 }
 
 interface SaveAnalysisRunInput {

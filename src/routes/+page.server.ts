@@ -11,11 +11,9 @@ const DEFAULT_VALUES = {
   moxfieldUrl: '',
   startDate: '',
   endDate: '',
-  keepTop: '20',
-  cutTop: '20',
-  addTop: '20',
-  refreshCache: false,
-  moxfieldHeaded: false
+  keepTop: '50',
+  cutTop: '50',
+  addTop: '50'
 };
 
 export const actions: Actions = {
@@ -28,9 +26,7 @@ export const actions: Actions = {
       endDate: String(formData.get('endDate') || '').trim(),
       keepTop: String(formData.get('keepTop') || DEFAULT_VALUES.keepTop).trim(),
       cutTop: String(formData.get('cutTop') || DEFAULT_VALUES.cutTop).trim(),
-      addTop: String(formData.get('addTop') || DEFAULT_VALUES.addTop).trim(),
-      refreshCache: formData.get('refreshCache') === 'on',
-      moxfieldHeaded: formData.get('moxfieldHeaded') === 'on'
+      addTop: String(formData.get('addTop') || DEFAULT_VALUES.addTop).trim()
     };
     const progressId = String(formData.get('progressId') || '').trim();
     if (progressId) {
@@ -102,8 +98,8 @@ export const actions: Actions = {
         keepTop,
         cutTop,
         addTop,
-        refreshCache: values.refreshCache,
-        headless: !values.moxfieldHeaded,
+        refreshCache: false,
+        headless: true,
         onProgress: progressId
           ? (event) => {
               updateProgress(progressId, {
@@ -122,9 +118,7 @@ export const actions: Actions = {
           endDate: values.endDate,
           keepTop: values.keepTop,
           cutTop: values.cutTop,
-          addTop: values.addTop,
-          refreshCache: values.refreshCache,
-          moxfieldHeaded: values.moxfieldHeaded
+          addTop: values.addTop
         }
       });
       const shareUrl = new URL(`/analysis/${shareId}`, request.url).toString();

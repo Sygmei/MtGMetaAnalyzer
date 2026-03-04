@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { env } from '$env/dynamic/public';
-  import { enhance } from '$app/forms';
-  import { goto } from '$app/navigation';
-  import type { SubmitFunction } from '@sveltejs/kit';
-  import { onDestroy } from 'svelte';
+  import { env } from "$env/dynamic/public";
+  import { enhance } from "$app/forms";
+  import { goto } from "$app/navigation";
+  import type { SubmitFunction } from "@sveltejs/kit";
+  import { onDestroy } from "svelte";
 
-  import CardTable from '$lib/components/CardTable.svelte';
-  import type { AnalysisResult } from '$lib/server/types';
+  import CardTable from "$lib/components/CardTable.svelte";
+  import type { AnalysisResult } from "$lib/server/types";
 
   export let form:
     | {
@@ -18,8 +18,6 @@
           keepTop: string;
           cutTop: string;
           addTop: string;
-          refreshCache: boolean;
-          moxfieldHeaded: boolean;
         };
         output?: {
           analyzedAt: string;
@@ -56,48 +54,50 @@
     keepTop: string;
     cutTop: string;
     addTop: string;
-    refreshCache: boolean;
-    moxfieldHeaded: boolean;
   } = {
-    moxfieldUrl: '',
-    startDate: '',
-    endDate: '',
-    keepTop: '20',
-    cutTop: '20',
-    addTop: '20',
-    refreshCache: false,
-    moxfieldHeaded: false
+    moxfieldUrl: "",
+    startDate: "",
+    endDate: "",
+    keepTop: "50",
+    cutTop: "50",
+    addTop: "50"
   };
 
   let output = form?.output;
-  type AnalysisTab = 'cut' | 'add' | 'keep';
-  let activeAnalysisTab: AnalysisTab = 'cut';
+  type AnalysisTab = "cut" | "add" | "keep";
+  let activeAnalysisTab: AnalysisTab = "cut";
 
   $: values = {
-    moxfieldUrl: form?.values?.moxfieldUrl ?? '',
-    startDate: form?.values?.startDate ?? '',
-    endDate: form?.values?.endDate ?? '',
-    keepTop: form?.values?.keepTop ?? '20',
-    cutTop: form?.values?.cutTop ?? '20',
-    addTop: form?.values?.addTop ?? '20',
-    refreshCache: form?.values?.refreshCache ?? false,
-    moxfieldHeaded: form?.values?.moxfieldHeaded ?? false
+    moxfieldUrl: form?.values?.moxfieldUrl ?? "",
+    startDate: form?.values?.startDate ?? "",
+    endDate: form?.values?.endDate ?? "",
+    keepTop: form?.values?.keepTop ?? "50",
+    cutTop: form?.values?.cutTop ?? "50",
+    addTop: form?.values?.addTop ?? "50"
   };
 
   $: output = form?.output;
 
   let isSubmitting = false;
   let progress = 0;
-  let progressMessage = 'Preparing request...';
-  let progressStageLabel = 'Queued';
-  let progressRequestId = '';
+  let progressMessage = "Preparing request...";
+  let progressStageLabel = "Queued";
+  let progressRequestId = "";
   let progressSocket: WebSocket | null = null;
   let progressSocketConnected = false;
-  let currentProgressId = '';
+  let progressPollTimer: ReturnType<typeof setInterval> | null = null;
+  let currentProgressId = "";
 
   type ProgressPayload = {
     id: string;
-    stage: 'queued' | 'moxfield' | 'commander' | 'mtgtop8' | 'analysis' | 'done' | 'error';
+    stage:
+      | "queued"
+      | "moxfield"
+      | "commander"
+      | "mtgtop8"
+      | "analysis"
+      | "done"
+      | "error";
     percent: number;
     message: string;
     done: boolean;
@@ -109,28 +109,79 @@
     currentProgressId = id;
     isSubmitting = true;
     progress = 2;
-    progressStageLabel = 'Queued';
-    progressMessage = 'Preparing request...';
-    closeProgressSocket();
+    progressStageLabel = "Queued";
+    progressMessage = "Preparing request...";
+    closeProgressTransport();
+    startProgressPolling(id);
     openProgressSocket(id);
   }
 
   function stopProgress(): void {
-    closeProgressSocket();
+    closeProgressTransport();
     progress = 100;
-    progressMessage = 'Finalizing results...';
-    progressStageLabel = 'Done';
+    progressMessage = "Finalizing results...";
+    progressStageLabel = "Done";
     setTimeout(() => {
       isSubmitting = false;
       progress = 0;
-      progressMessage = 'Preparing request...';
-      progressStageLabel = 'Queued';
-      currentProgressId = '';
+      progressMessage = "Preparing request...";
+      progressStageLabel = "Queued";
+      currentProgressId = "";
     }, 320);
   }
 
+  function applyProgressState(parsed: ProgressPayload): void {
+    if (parsed.id !== currentProgressId) {
+      return;
+    }
+    progress = Math.max(progress, Math.min(100, parsed.percent));
+    progressMessage = parsed.error || parsed.message;
+    progressStageLabel = mapStageLabel(parsed.stage);
+  }
+
+  function startProgressPolling(id: string): void {
+    stopProgressPolling();
+    void pollProgress(id);
+    progressPollTimer = setInterval(() => {
+      void pollProgress(id);
+    }, 1000);
+  }
+
+  function stopProgressPolling(): void {
+    if (!progressPollTimer) {
+      return;
+    }
+    clearInterval(progressPollTimer);
+    progressPollTimer = null;
+  }
+
+  async function pollProgress(id: string): Promise<void> {
+    if (!id || id !== currentProgressId || typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/progress/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as ProgressPayload;
+      if (!payload || typeof payload !== "object") {
+        return;
+      }
+      applyProgressState(payload);
+      if (payload.done) {
+        stopProgressPolling();
+      }
+    } catch {
+      // ignore polling errors while request is in-flight
+    }
+  }
+
   function openProgressSocket(id: string): void {
-    if (typeof window === 'undefined') {
+    if (typeof window === "undefined") {
       return;
     }
     const url = progressWebSocketUrl();
@@ -142,20 +193,21 @@
         progressSocketConnected = true;
         socket.send(
           JSON.stringify({
-            type: 'subscribe',
-            progressId: id
-          })
+            type: "subscribe",
+            progressId: id,
+          }),
         );
       };
 
       socket.onmessage = (event) => {
         const parsed = parseProgressMessage(event.data);
-        if (!parsed || parsed.id !== currentProgressId) {
+        if (!parsed) {
           return;
         }
-        progress = Math.max(progress, Math.min(100, parsed.percent));
-        progressMessage = parsed.error || parsed.message;
-        progressStageLabel = mapStageLabel(parsed.stage);
+        applyProgressState(parsed);
+        if (parsed.done) {
+          stopProgressPolling();
+        }
       };
 
       socket.onclose = () => {
@@ -167,8 +219,13 @@
       };
     } catch {
       progressSocketConnected = false;
-      progressMessage = 'Could not connect to progress socket.';
+      progressMessage = "Could not connect to progress socket.";
     }
+  }
+
+  function closeProgressTransport(): void {
+    closeProgressSocket();
+    stopProgressPolling();
   }
 
   function closeProgressSocket(): void {
@@ -186,23 +243,33 @@
   }
 
   function progressWebSocketUrl(): string {
-    const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
     const host = window.location.hostname;
-    const port = (env.PUBLIC_PROGRESS_WS_PORT || '').trim() || '3210';
-    return `${protocol}://${host}:${port}/progress`;
+    const configuredPort = (env.PUBLIC_PROGRESS_WS_PORT || "").trim();
+    const browserPort = window.location.port;
+    const portSegment = configuredPort
+      ? `:${configuredPort}`
+      : browserPort
+        ? `:${browserPort}`
+        : "";
+    return `${protocol}://${host}${portSegment}/progress`;
   }
 
   function parseProgressMessage(payload: unknown): ProgressPayload | null {
-    if (typeof payload !== 'string') {
+    if (typeof payload !== "string") {
       return null;
     }
     try {
       const parsed = JSON.parse(payload) as unknown;
-      if (!parsed || typeof parsed !== 'object') {
+      if (!parsed || typeof parsed !== "object") {
         return null;
       }
       const envelope = parsed as { type?: unknown; state?: unknown };
-      if (envelope.type !== 'progress' || !envelope.state || typeof envelope.state !== 'object') {
+      if (
+        envelope.type !== "progress" ||
+        !envelope.state ||
+        typeof envelope.state !== "object"
+      ) {
         return null;
       }
       return envelope.state as ProgressPayload;
@@ -211,18 +278,21 @@
     }
   }
 
-  function mapStageLabel(stage: ProgressPayload['stage']): string {
-    if (stage === 'queued') return 'Queued';
-    if (stage === 'moxfield') return 'Moxfield';
-    if (stage === 'commander') return 'Commander';
-    if (stage === 'mtgtop8') return 'MtgTop8';
-    if (stage === 'analysis') return 'Analysis';
-    if (stage === 'done') return 'Done';
-    return 'Error';
+  function mapStageLabel(stage: ProgressPayload["stage"]): string {
+    if (stage === "queued") return "Queued";
+    if (stage === "moxfield") return "Moxfield";
+    if (stage === "commander") return "Commander";
+    if (stage === "mtgtop8") return "MtgTop8";
+    if (stage === "analysis") return "Analysis";
+    if (stage === "done") return "Done";
+    return "Error";
   }
 
   function createProgressId(): string {
-    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    if (
+      typeof crypto !== "undefined" &&
+      typeof crypto.randomUUID === "function"
+    ) {
       return crypto.randomUUID();
     }
     return `progress-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -230,7 +300,7 @@
 
   const enhanceSubmit: SubmitFunction = ({ formData }) => {
     const id = createProgressId();
-    formData.set('progressId', id);
+    formData.set("progressId", id);
     startProgress(id);
 
     return async ({ update, result }) => {
@@ -238,10 +308,10 @@
 
       const shareUrl = extractShareUrl(result);
       if (shareUrl) {
-        closeProgressSocket();
+        closeProgressTransport();
         progress = 100;
-        progressStageLabel = 'Done';
-        progressMessage = 'Opening shared permalink...';
+        progressStageLabel = "Done";
+        progressMessage = "Opening shared permalink...";
         await goto(toInternalPath(shareUrl));
         return;
       }
@@ -251,16 +321,22 @@
   };
 
   function extractShareUrl(result: unknown): string | null {
-    if (!result || typeof result !== 'object') {
+    if (!result || typeof result !== "object") {
       return null;
     }
     const actionResult = result as { type?: unknown; data?: unknown };
-    if (actionResult.type !== 'success' || !actionResult.data || typeof actionResult.data !== 'object') {
+    if (
+      actionResult.type !== "success" ||
+      !actionResult.data ||
+      typeof actionResult.data !== "object"
+    ) {
       return null;
     }
-    const data = actionResult.data as { output?: { share?: { url?: unknown } } };
+    const data = actionResult.data as {
+      output?: { share?: { url?: unknown } };
+    };
     const url = data.output?.share?.url;
-    return typeof url === 'string' && url.trim() ? url : null;
+    return typeof url === "string" && url.trim() ? url : null;
   }
 
   function toInternalPath(urlLike: string): string {
@@ -273,7 +349,7 @@
   }
 
   onDestroy(() => {
-    closeProgressSocket();
+    closeProgressTransport();
   });
 </script>
 
@@ -290,7 +366,11 @@
     <section class="progress-shell" aria-live="polite" aria-busy="true">
       <div class="progress-head">
         <p>Analyzing Deck ({progressStageLabel})</p>
-        <span>{Math.round(progress)}% {progressSocketConnected ? '(live)' : ''}</span>
+        <span
+          >{Math.round(progress)}% {progressSocketConnected
+            ? "(live)"
+            : ""}</span
+        >
       </div>
       <div class="progress-track">
         <div class="progress-fill" style={`width:${progress}%`}></div>
@@ -301,11 +381,10 @@
 
   <section class="panel hero">
     <div class="hero-head">
-      <p class="eyebrow">Duel Commander Meta Intelligence</p>
-      <h1>MtG Meta Atelier</h1>
+      <h1>MtG DC Meta Atelier</h1>
       <p class="subtitle">
-        Analyze your Moxfield deck against live Duel Commander trends from MtgTop8, then surface sharp
-        keep, cut, and add decisions.
+        Analyze your Moxfield deck against live Duel Commander trends from
+        MtgTop8!
       </p>
     </div>
 
@@ -324,44 +403,52 @@
 
       <div class="grid two">
         <label class="field">
-          <span>Start date (optional)</span>
+          <span>Ignore MtGTop8 decks before date ...</span>
           <input name="startDate" type="date" value={values.startDate} />
         </label>
 
         <label class="field">
-          <span>End date (optional)</span>
+          <span>Ignore MtGTop8 decks after date ...</span>
           <input name="endDate" type="date" value={values.endDate} />
         </label>
       </div>
 
-      <div class="grid three">
-        <label class="field">
-          <span>Keep top</span>
-          <input name="keepTop" type="number" min="1" step="1" value={values.keepTop} />
-        </label>
+      {#if false}
+        <div class="grid three">
+          <label class="field">
+            <span>Keep top</span>
+            <input
+              name="keepTop"
+              type="number"
+              min="1"
+              step="1"
+              value={values.keepTop}
+            />
+          </label>
 
-        <label class="field">
-          <span>Cut top</span>
-          <input name="cutTop" type="number" min="1" step="1" value={values.cutTop} />
-        </label>
+          <label class="field">
+            <span>Cut top</span>
+            <input
+              name="cutTop"
+              type="number"
+              min="1"
+              step="1"
+              value={values.cutTop}
+            />
+          </label>
 
-        <label class="field">
-          <span>Add top</span>
-          <input name="addTop" type="number" min="1" step="1" value={values.addTop} />
-        </label>
-      </div>
-
-      <div class="toggles">
-        <label class="toggle">
-          <input name="refreshCache" type="checkbox" checked={values.refreshCache} />
-          Refresh MtgTop8 cache
-        </label>
-
-        <label class="toggle">
-          <input name="moxfieldHeaded" type="checkbox" checked={values.moxfieldHeaded} />
-          Headed Playwright mode
-        </label>
-      </div>
+          <label class="field">
+            <span>Add top</span>
+            <input
+              name="addTop"
+              type="number"
+              min="1"
+              step="1"
+              value={values.addTop}
+            />
+          </label>
+        </div>
+      {/if}
 
       <button type="submit">Analyze Deck</button>
     </form>
@@ -375,7 +462,9 @@
     <section class="panel info">
       <div class="title-row">
         <h2>Deck Snapshot</h2>
-        <span class="stamp">Analyzed {new Date(output.analyzedAt).toLocaleString()}</span>
+        <span class="stamp"
+          >Analyzed {new Date(output.analyzedAt).toLocaleString()}</span
+        >
       </div>
 
       <div class="meta-grid">
@@ -386,23 +475,28 @@
         </article>
         <article>
           <p class="k">Commander</p>
-          <p class="v">{output.moxfieldDeck.commanders.join(' / ')}</p>
+          <p class="v">{output.moxfieldDeck.commanders.join(" / ")}</p>
           <p class="sub">
             MtgTop8 match:
-            <a href={output.commander.url} target="_blank" rel="noreferrer">{output.commander.name}</a>
+            <a href={output.commander.url} target="_blank" rel="noreferrer"
+              >{output.commander.name}</a
+            >
             ({output.commander.score.toFixed(2)})
           </p>
         </article>
         <article>
           <p class="k">Decks considered</p>
           <p class="v">{output.analysis.totalDecksConsidered}</p>
-          <p class="sub">Latest cache date: {output.cache.latestCachedEventDate ?? 'none'}</p>
+          <p class="sub">
+            Latest cache date: {output.cache.latestCachedEventDate ?? "none"}
+          </p>
         </article>
         <article>
           <p class="k">Cache updates</p>
           <p class="v">+{output.cache.insertedDeckRows}</p>
           <p class="sub">
-            fetched {output.cache.fetchedDeckRows}, total stored {output.cache.totalCachedDeckRows}
+            fetched {output.cache.fetchedDeckRows}, total stored {output.cache
+              .totalCachedDeckRows}
           </p>
         </article>
         {#if output.share}
@@ -410,7 +504,9 @@
             <p class="k">Share</p>
             <p class="v"><a href={output.share.url}>{output.share.id}</a></p>
             <p class="sub">
-              <a href={output.share.url} target="_blank" rel="noreferrer">Open permalink</a>
+              <a href={output.share.url} target="_blank" rel="noreferrer"
+                >Open permalink</a
+              >
             </p>
           </article>
         {/if}
@@ -422,38 +518,38 @@
         <button
           type="button"
           role="tab"
-          class:active={activeAnalysisTab === 'cut'}
-          aria-selected={activeAnalysisTab === 'cut'}
-          on:click={() => (activeAnalysisTab = 'cut')}
+          class:active={activeAnalysisTab === "cut"}
+          aria-selected={activeAnalysisTab === "cut"}
+          on:click={() => (activeAnalysisTab = "cut")}
         >
           Cut
         </button>
         <button
           type="button"
           role="tab"
-          class:active={activeAnalysisTab === 'add'}
-          aria-selected={activeAnalysisTab === 'add'}
-          on:click={() => (activeAnalysisTab = 'add')}
+          class:active={activeAnalysisTab === "add"}
+          aria-selected={activeAnalysisTab === "add"}
+          on:click={() => (activeAnalysisTab = "add")}
         >
           Add
         </button>
         <button
           type="button"
           role="tab"
-          class:active={activeAnalysisTab === 'keep'}
-          aria-selected={activeAnalysisTab === 'keep'}
-          on:click={() => (activeAnalysisTab = 'keep')}
+          class:active={activeAnalysisTab === "keep"}
+          aria-selected={activeAnalysisTab === "keep"}
+          on:click={() => (activeAnalysisTab = "keep")}
         >
           Keep
         </button>
       </div>
 
-      {#if activeAnalysisTab === 'cut'}
+      {#if activeAnalysisTab === "cut"}
         <article class="analysis-view cut">
           <h2>Cards To Cut</h2>
           <CardTable cards={output.analysis.cut} />
         </article>
-      {:else if activeAnalysisTab === 'add'}
+      {:else if activeAnalysisTab === "add"}
         <article class="analysis-view add">
           <h2>Cards To Add</h2>
           <CardTable cards={output.analysis.toAdd} />
@@ -481,11 +577,22 @@
     margin: 0;
     min-height: 100vh;
     color: var(--ink);
-    font-family: 'Space Grotesk', 'Avenir Next', 'Segoe UI', sans-serif;
-    background:
-      radial-gradient(circle at 15% 10%, rgba(43, 141, 175, 0.35), transparent 42%),
-      radial-gradient(circle at 80% 25%, rgba(255, 164, 76, 0.3), transparent 38%),
-      radial-gradient(circle at 50% 90%, rgba(255, 95, 95, 0.23), transparent 44%),
+    font-family: "Space Grotesk", "Avenir Next", "Segoe UI", sans-serif;
+    background: radial-gradient(
+        circle at 15% 10%,
+        rgba(43, 141, 175, 0.35),
+        transparent 42%
+      ),
+      radial-gradient(
+        circle at 80% 25%,
+        rgba(255, 164, 76, 0.3),
+        transparent 38%
+      ),
+      radial-gradient(
+        circle at 50% 90%,
+        rgba(255, 95, 95, 0.23),
+        transparent 44%
+      ),
       var(--bg);
     overflow-x: hidden;
   }
@@ -570,7 +677,11 @@
     height: 320px;
     top: -90px;
     right: -40px;
-    background: linear-gradient(145deg, rgba(34, 180, 200, 0.45), rgba(46, 86, 175, 0.12));
+    background: linear-gradient(
+      145deg,
+      rgba(34, 180, 200, 0.45),
+      rgba(46, 86, 175, 0.12)
+    );
   }
 
   .orb-b {
@@ -578,7 +689,11 @@
     height: 260px;
     bottom: 8%;
     left: -70px;
-    background: linear-gradient(145deg, rgba(255, 130, 87, 0.5), rgba(255, 214, 139, 0.08));
+    background: linear-gradient(
+      145deg,
+      rgba(255, 130, 87, 0.5),
+      rgba(255, 214, 139, 0.08)
+    );
     animation-delay: -5s;
   }
 
@@ -588,7 +703,10 @@
     z-index: -2;
     opacity: 0.12;
     pointer-events: none;
-    background-image: radial-gradient(rgba(255, 255, 255, 0.8) 0.45px, transparent 0.45px);
+    background-image: radial-gradient(
+      rgba(255, 255, 255, 0.8) 0.45px,
+      transparent 0.45px
+    );
     background-size: 4px 4px;
   }
 
@@ -608,12 +726,17 @@
   }
 
   .hero::after {
-    content: '';
+    content: "";
     position: absolute;
     inset: auto -25% -80% auto;
     width: 68%;
     aspect-ratio: 1;
-    background: conic-gradient(from 190deg, rgba(34, 180, 200, 0.2), rgba(244, 163, 64, 0.2), transparent 52%);
+    background: conic-gradient(
+      from 190deg,
+      rgba(34, 180, 200, 0.2),
+      rgba(244, 163, 64, 0.2),
+      transparent 52%
+    );
     filter: blur(16px);
     transform: rotate(-12deg);
     pointer-events: none;
@@ -624,19 +747,10 @@
     max-width: 820px;
   }
 
-  .eyebrow {
-    margin: 0;
-    text-transform: uppercase;
-    letter-spacing: 0.16em;
-    font-size: 0.74rem;
-    color: #88d2dd;
-    font-weight: 700;
-  }
-
   h1,
   h2 {
     margin: 0;
-    font-family: 'Sora', 'Space Grotesk', sans-serif;
+    font-family: "Sora", "Space Grotesk", sans-serif;
     letter-spacing: 0.01em;
   }
 
@@ -697,7 +811,10 @@
     font: inherit;
     color: var(--ink);
     background: rgba(8, 20, 27, 0.86);
-    transition: border-color 120ms ease, box-shadow 120ms ease, transform 120ms ease;
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease,
+      transform 120ms ease;
   }
 
   input::placeholder {
@@ -708,27 +825,6 @@
     outline: none;
     border-color: rgba(86, 201, 222, 0.82);
     box-shadow: 0 0 0 3px rgba(41, 164, 188, 0.22);
-  }
-
-  .toggles {
-    display: flex;
-    gap: 1.2rem;
-    flex-wrap: wrap;
-  }
-
-  .toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    color: #c1d5e1;
-    font-size: 0.91rem;
-  }
-
-  .toggle input {
-    width: auto;
-    margin: 0;
-    accent-color: #52c2d4;
-    box-shadow: none;
   }
 
   button {
@@ -853,7 +949,11 @@
 
   .analysis-tabs button.active {
     border-color: rgba(124, 208, 227, 0.8);
-    background: linear-gradient(130deg, rgba(37, 173, 196, 0.75), rgba(244, 163, 64, 0.65));
+    background: linear-gradient(
+      130deg,
+      rgba(37, 173, 196, 0.75),
+      rgba(244, 163, 64, 0.65)
+    );
     color: #07131a;
   }
 

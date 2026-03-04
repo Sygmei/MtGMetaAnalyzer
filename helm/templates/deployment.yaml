@@ -1,0 +1,75 @@
+{{- $name := "mtgmetaanalyzer" -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: "mtgmetaanalyzer-deployment"
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: "mtgmetaanalyzer"
+  template:
+    metadata:
+      labels:
+        app: "mtgmetaanalyzer"
+    spec:
+      containers:
+        - name: "mtgmetaanalyzer"
+          image: "ghcr.io/sygmei/mtgmetaanalyzer:{{ .Values.version }}"
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+            - name: ws
+              containerPort: 3210
+              protocol: TCP
+          env:
+            - name: NODE_ENV
+              value: "production"
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "3000"
+            - name: PROGRESS_WS_PORT
+              value: "3210"
+            - name: PUBLIC_PROGRESS_WS_PORT
+              value: ""
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: connection-string-admin
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"

@@ -1,4 +1,5 @@
 import { analyzeCards } from './analysis';
+import { getDuelCommanderDeckBannedCardsNormalized } from './duel-commander-banlist';
 import { fetchMoxfieldDeck } from './moxfield';
 import {
   getLatestCachedEventDate,
@@ -96,13 +97,15 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
   });
   const insertedDeckRows = await insertDecksForCommander(commanderSlug, newDeckRows);
   const cachedDecks = await loadDecksForCommander(commanderSlug);
+  const bannedCardsNormalized = await getDuelCommanderDeckBannedCardsNormalized();
 
   const analysis = analyzeCards(moxfieldDeck, cachedDecks, {
     startDate: input.startDate,
     endDate: input.endDate,
     keepTop: input.keepTop,
     cutTop: input.cutTop,
-    addTop: input.addTop
+    addTop: input.addTop,
+    bannedCardsNormalized
   });
 
   input.onProgress?.({

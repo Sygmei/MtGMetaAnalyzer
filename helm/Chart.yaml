@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mtg-meta-analyzer
+description: Helm chart for MtG Meta Analyzer (SvelteKit + Playwright + PostgreSQL)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

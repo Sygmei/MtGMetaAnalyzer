@@ -1,0 +1,21 @@
+Create the database secret once in the target namespace:
+
+  kubectl create secret generic mtg-meta-analyzer-db \
+    --from-literal=DATABASE_URL='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer'
+
+Port-forward the app:
+
+  kubectl port-forward svc/mtgmetaanalyzer-service 3000:80
+
+Open:
+
+  http://127.0.0.1:3000
+
+WebSocket progress endpoint:
+
+  ws://127.0.0.1:3000/progress
+
+Ingress is created with two paths:
+
+  /          -> service port 80
+  /progress  -> service port 3210

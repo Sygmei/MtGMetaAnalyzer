@@ -32,6 +32,7 @@ export interface CardStat {
   decksWithCard: number;
   totalDecks: number;
   ratio: number;
+  banned?: boolean;
 }
 
 export interface AnalysisResult {

@@ -17,6 +17,11 @@ const BASE_URL = 'https://www.mtgtop8.com';
 const DUEL_COMMANDER_ALL_META = '56';
 const DUEL_COMMANDER_FORMAT = 'EDH';
 const DUEL_COMMANDER_INDEX_URL = `${BASE_URL}/format?f=${DUEL_COMMANDER_FORMAT}&meta=${DUEL_COMMANDER_ALL_META}&a=`;
+const FALLBACK_HTML_ENCODING = 'windows-1252';
+const DEFAULT_HTML_ENCODING = 'utf-8';
+const META_CHARSET_PATTERN = /<meta[^>]+charset\s*=\s*["']?\s*([a-z0-9._-]+)/i;
+const META_HTTP_EQUIV_CHARSET_PATTERN =
+  /<meta[^>]+http-equiv\s*=\s*["']content-type["'][^>]+content\s*=\s*["'][^"']*charset=([a-z0-9._-]+)/i;
 
 interface PageRequest {
   method: 'GET' | 'POST';
@@ -481,7 +486,7 @@ export class MtgTop8Client {
       if (!response.ok) {
         throw new Error(`MtgTop8 GET failed ${response.status}: ${url}`);
       }
-      return await response.text();
+      return await this.readHtmlResponse(response);
     } finally {
       clearTimeout(timer);
     }
@@ -505,11 +510,93 @@ export class MtgTop8Client {
       if (!response.ok) {
         throw new Error(`MtgTop8 POST failed ${response.status}: ${url}`);
       }
-      return await response.text();
+      return await this.readHtmlResponse(response);
     } finally {
       clearTimeout(timer);
     }
   }
+
+  private async readHtmlResponse(response: Response): Promise<string> {
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const contentType = response.headers.get('content-type') || '';
+
+    const encodings = new Set<string>();
+    const headerCharset = extractCharsetFromContentType(contentType);
+    if (headerCharset) {
+      encodings.add(headerCharset);
+    }
+    const sniffed = sniffCharsetFromHtml(bytes);
+    if (sniffed) {
+      encodings.add(sniffed);
+    }
+    encodings.add(DEFAULT_HTML_ENCODING);
+    encodings.add(FALLBACK_HTML_ENCODING);
+
+    let bestText = '';
+    let bestScore = Number.POSITIVE_INFINITY;
+
+    for (const encoding of encodings) {
+      const decoded = decodeBytes(bytes, encoding);
+      if (decoded == null) {
+        continue;
+      }
+      const score = replacementCharCount(decoded);
+      if (score < bestScore) {
+        bestScore = score;
+        bestText = decoded;
+      }
+      if (score === 0) {
+        return decoded;
+      }
+    }
+
+    return bestText || decodeBytes(bytes, DEFAULT_HTML_ENCODING) || bytes.toString('utf-8');
+  }
+}
+
+function extractCharsetFromContentType(contentType: string): string | null {
+  if (!contentType) {
+    return null;
+  }
+  const match = /charset\s*=\s*["']?\s*([a-z0-9._-]+)/i.exec(contentType);
+  return match?.[1]?.trim().toLowerCase() || null;
+}
+
+function sniffCharsetFromHtml(bytes: Buffer): string | null {
+  if (!bytes.length) {
+    return null;
+  }
+
+  const probe = bytes.subarray(0, Math.min(bytes.length, 8192)).toString('latin1');
+  const directMatch = META_CHARSET_PATTERN.exec(probe);
+  if (directMatch?.[1]) {
+    return directMatch[1].trim().toLowerCase();
+  }
+
+  const httpEquivMatch = META_HTTP_EQUIV_CHARSET_PATTERN.exec(probe);
+  if (httpEquivMatch?.[1]) {
+    return httpEquivMatch[1].trim().toLowerCase();
+  }
+
+  return null;
+}
+
+function decodeBytes(bytes: Buffer, encoding: string): string | null {
+  try {
+    return new TextDecoder(encoding).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function replacementCharCount(value: string): number {
+  let count = 0;
+  for (const ch of value) {
+    if (ch === '\uFFFD') {
+      count += 1;
+    }
+  }
+  return count;
 }
 
 function extractDeckSections(html: string): DeckSections {

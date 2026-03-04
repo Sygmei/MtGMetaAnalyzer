@@ -1,6 +1,8 @@
 # syntax=docker/dockerfile:1.7
 
-FROM mcr.microsoft.com/playwright:v1.55.0-jammy AS deps
+ARG PLAYWRIGHT_IMAGE_TAG=v1.58.2-jammy
+
+FROM mcr.microsoft.com/playwright:${PLAYWRIGHT_IMAGE_TAG} AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
@@ -10,7 +12,7 @@ WORKDIR /app
 COPY . .
 RUN npm run build && npm prune --omit=dev
 
-FROM mcr.microsoft.com/playwright:v1.55.0-jammy AS runtime
+FROM mcr.microsoft.com/playwright:${PLAYWRIGHT_IMAGE_TAG} AS runtime
 WORKDIR /app
 
 ENV NODE_ENV=production
@@ -24,8 +26,9 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/build ./build
 COPY --from=build /app/migrations ./migrations
 COPY --from=build /app/scripts ./scripts
+RUN chmod +x /app/scripts/docker-entrypoint.sh
 
 EXPOSE 3000
 EXPOSE 3210
 
-CMD ["npm", "run", "start"]
+ENTRYPOINT ["/app/scripts/docker-entrypoint.sh"]

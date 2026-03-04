@@ -59,8 +59,6 @@ export const analysisRuns = pgTable(
         keepTop: string;
         cutTop: string;
         addTop: string;
-        refreshCache: boolean;
-        moxfieldHeaded: boolean;
       }>()
       .notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
@@ -68,5 +66,20 @@ export const analysisRuns = pgTable(
   (table) => ({
     shareIdUnique: uniqueIndex('analysis_runs_share_id_unique').on(table.shareId),
     createdAtIdx: index('idx_analysis_runs_created_at').on(table.createdAt)
+  })
+);
+
+export const duelCommanderBanlistCache = pgTable(
+  'duel_commander_banlist_cache',
+  {
+    key: text('key').primaryKey(),
+    sourceUrl: text('source_url').notNull(),
+    cardsJson: jsonb('cards_json').$type<string[]>().notNull(),
+    fetchedAt: timestamp('fetched_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+  },
+  (table) => ({
+    fetchedAtIdx: index('idx_duel_commander_banlist_cache_fetched_at').on(table.fetchedAt)
   })
 );

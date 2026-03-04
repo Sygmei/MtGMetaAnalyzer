@@ -167,7 +167,16 @@
                 on:mouseenter={() => openPreview(row.card)}
                 on:focus={() => openPreview(row.card)}
               >
-                {row.card}
+                <span class="card-name" class:banned-name={Boolean(row.banned)}>{row.card}</span>
+                {#if row.banned}
+                  <span
+                    class="danger-icon"
+                    title="Banned in Duel Commander"
+                    aria-label="Banned in Duel Commander"
+                  >
+                    ⚠
+                  </span>
+                {/if}
               </button>
             </td>
             <td>{row.decksWithCard} / {row.totalDecks}</td>
@@ -272,6 +281,9 @@
     text-align: left;
     font-weight: inherit;
     line-height: 1.25;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
   }
 
   .card-link:hover,
@@ -279,6 +291,29 @@
     color: #7ae5f5;
     text-decoration: underline;
     outline: none;
+  }
+
+  .card-name {
+    color: inherit;
+  }
+
+  .banned-name {
+    color: #ff5f65;
+    text-decoration: line-through;
+    text-decoration-thickness: 2px;
+    text-decoration-color: #ff5f65;
+    text-underline-offset: 2px;
+  }
+
+  .card-link:hover .banned-name,
+  .card-link:focus-visible .banned-name {
+    color: #ff5f65;
+  }
+
+  .danger-icon {
+    color: #ff8655;
+    font-size: 0.82rem;
+    line-height: 1;
   }
 
   tbody td:last-child {
