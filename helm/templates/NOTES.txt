@@ -1,7 +1,9 @@
 Create the database secret once in the target namespace:
 
-  kubectl create secret generic mtg-meta-analyzer-db \
-    --from-literal=DATABASE_URL='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer'
+  kubectl create secret generic postgresql-credentials \
+    --from-literal=connection-string='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer' \
+    --from-literal=connection-string-ro='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer' \
+    --from-literal=connection-string-admin='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer'
 
 Port-forward the app:
 

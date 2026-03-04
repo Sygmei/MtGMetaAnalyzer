@@ -1,7 +1,7 @@
 import { load } from 'cheerio';
 import { eq, sql } from 'drizzle-orm';
 
-import { getDb } from './db';
+import { getReadDb, getWriteDb } from './db';
 import { duelCommanderBanlistCache } from './db-schema';
 import { DEFAULT_USER_AGENT, normalizeName } from './utils';
 
@@ -216,7 +216,7 @@ function isLikelyCardName(value: string): boolean {
 }
 
 async function readCacheFromDb(): Promise<{ fetchedAtMs: number; normalizedCards: Set<string>; sourceUrl: string } | null> {
-  const db = getDb();
+  const db = getReadDb();
   const rows = await db
     .select({
       sourceUrl: duelCommanderBanlistCache.sourceUrl,
@@ -245,7 +245,7 @@ async function readCacheFromDb(): Promise<{ fetchedAtMs: number; normalizedCards
 }
 
 async function writeCacheToDb(cache: { fetchedAtMs: number; normalizedCards: Set<string>; sourceUrl: string }): Promise<void> {
-  const db = getDb();
+  const db = getWriteDb();
   const cards = [...cache.normalizedCards].sort();
 
   await db

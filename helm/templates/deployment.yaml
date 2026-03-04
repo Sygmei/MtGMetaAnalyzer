@@ -16,7 +16,7 @@ spec:
       containers:
         - name: "mtgmetaanalyzer"
           image: "ghcr.io/sygmei/mtgmetaanalyzer:{{ .Values.version }}"
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             runAsNonRoot: true
@@ -45,7 +45,21 @@ spec:
               value: "3210"
             - name: PUBLIC_PROGRESS_WS_PORT
               value: ""
-            - name: DATABASE_URL
+            - name: MIGRATE_MAX_ATTEMPTS
+              value: "60"
+            - name: MIGRATE_RETRY_DELAY_SECONDS
+              value: "2"
+            - name: DATABASE_URL_RW
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: connection-string
+            - name: DATABASE_URL_RO
+              valueFrom:
+                secretKeyRef:
+                  name: postgresql-credentials
+                  key: connection-string-ro
+            - name: DATABASE_URL_ADMIN
               valueFrom:
                 secretKeyRef:
                   name: postgresql-credentials

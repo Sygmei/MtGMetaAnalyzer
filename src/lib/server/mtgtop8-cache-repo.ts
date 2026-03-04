@@ -1,7 +1,7 @@
 import { desc, eq, sql } from 'drizzle-orm';
 
 import { mtgtop8Commanders, mtgtop8Decks } from './db-schema';
-import { getDb } from './db';
+import { getReadDb, getWriteDb } from './db';
 import type { DeckRecord } from './types';
 import { formatDate, parseDate } from './utils';
 
@@ -14,7 +14,7 @@ interface CommanderCacheInput {
 }
 
 export async function upsertCommanderCache(input: CommanderCacheInput): Promise<void> {
-  const db = getDb();
+  const db = getWriteDb();
 
   await db
     .insert(mtgtop8Commanders)
@@ -39,7 +39,7 @@ export async function upsertCommanderCache(input: CommanderCacheInput): Promise<
 }
 
 export async function getLatestCachedEventDate(commanderSlug: string): Promise<Date | null> {
-  const db = getDb();
+  const db = getReadDb();
 
   const rows = await db
     .select({
@@ -63,7 +63,7 @@ export async function insertDecksForCommander(
     return 0;
   }
 
-  const db = getDb();
+  const db = getWriteDb();
   let inserted = 0;
 
   await db.transaction(async (tx) => {
@@ -103,7 +103,7 @@ export async function insertDecksForCommander(
 }
 
 export async function loadDecksForCommander(commanderSlug: string): Promise<DeckRecord[]> {
-  const db = getDb();
+  const db = getReadDb();
 
   const rows = await db
     .select({

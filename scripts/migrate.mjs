@@ -4,9 +4,9 @@ import process from 'node:process';
 
 import postgres from 'postgres';
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL_ADMIN || process.env.DATABASE_URL;
 if (!databaseUrl) {
-  console.error('DATABASE_URL is required');
+  console.error('DATABASE_URL_ADMIN is required (or fallback DATABASE_URL)');
   process.exit(1);
 }
 

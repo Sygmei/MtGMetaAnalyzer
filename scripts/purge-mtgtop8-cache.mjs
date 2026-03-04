@@ -36,9 +36,9 @@ if (args.includes('--help') || args.includes('-h')) {
   process.exit(0);
 }
 
-const databaseUrl = process.env.DATABASE_URL;
+const databaseUrl = process.env.DATABASE_URL_RW || process.env.DATABASE_URL;
 if (!databaseUrl) {
-  console.error('DATABASE_URL is required');
+  console.error('DATABASE_URL_RW is required (or fallback DATABASE_URL)');
   process.exit(1);
 }
 

@@ -1,5 +1,5 @@
-version: "1.0.0"
-replicaCount: 1
+version: "1.1.0"
+replicaCount: 2
 ingress:
   enabled: true
   domain: "mtgmeta.obencorp.dev"

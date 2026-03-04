@@ -29,7 +29,9 @@ Web app to analyze a Duel Commander Moxfield deck against MtgTop8 data.
 Create `.env` with:
 
 ```bash
-DATABASE_URL=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
+DATABASE_URL_RW=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
+DATABASE_URL_RO=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
+DATABASE_URL_ADMIN=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
 ```
 
 ## Setup
@@ -77,11 +79,19 @@ If your domain or ClusterIssuer name differs, edit:
 
 - `helm/mtg-meta-analyzer/templates/ingress.yaml`
 
-Create the required DB secret first (fixed name: `mtg-meta-analyzer-db`):
+The chart expects an existing secret named `postgresql-credentials` with:
+
+- `connection-string` (RW pooler)
+- `connection-string-ro` (RO pooler)
+- `connection-string-admin` (direct admin, used for migrations only)
+
+Example:
 
 ```bash
-kubectl -n mtg-meta-analyzer create secret generic mtg-meta-analyzer-db \
-  --from-literal=DATABASE_URL='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer'
+kubectl -n mtg-meta-analyzer create secret generic postgresql-credentials \
+  --from-literal=connection-string='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer' \
+  --from-literal=connection-string-ro='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer' \
+  --from-literal=connection-string-admin='postgres://postgres:postgres@postgres:5432/mtg_meta_analyzer'
 ```
 
 Install:

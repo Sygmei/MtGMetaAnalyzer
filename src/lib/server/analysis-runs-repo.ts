@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 
 import { analysisRuns } from './db-schema';
-import { getDb } from './db';
+import { getReadDb, getWriteDb } from './db';
 import type { AnalyzeOutput } from './types';
 
 interface AnalysisInputSnapshot {
@@ -20,7 +20,7 @@ interface SaveAnalysisRunInput {
 }
 
 export async function saveAnalysisRun(input: SaveAnalysisRunInput): Promise<string> {
-  const db = getDb();
+  const db = getWriteDb();
 
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const shareId = generateShareId();
@@ -49,7 +49,7 @@ export async function findAnalysisRunByShareId(shareId: string): Promise<{
   payload: AnalyzeOutput;
   input: AnalysisInputSnapshot;
 } | null> {
-  const db = getDb();
+  const db = getReadDb();
   const rows = await db
     .select({
       shareId: analysisRuns.shareId,
