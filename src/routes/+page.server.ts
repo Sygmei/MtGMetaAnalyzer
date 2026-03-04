@@ -1,7 +1,7 @@
 import { fail } from '@sveltejs/kit';
 
 import { saveAnalysisRun } from '$lib/server/analysis-runs-repo';
-import { withSpan } from '$lib/server/otel';
+import { getTraceId, withSpan } from '$lib/server/otel';
 import { completeProgress, failProgress, initProgress, updateProgress } from '$lib/server/progress';
 import { analyzeFromMoxfieldUrl } from '$lib/server/pipeline';
 import { parseDate } from '$lib/server/utils';
@@ -93,16 +93,19 @@ export const actions: Actions = {
       });
     }
 
+    let analysisTraceId = 'none';
     try {
-      console.info(`[analysis] start ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`);
       const output = await withSpan(
         'analysis.execute',
         {
           'analysis.client_ip': clientIp,
           'analysis.moxfield_url': values.moxfieldUrl
         },
-        () =>
-          analyzeFromMoxfieldUrl({
+        (span) => {
+          analysisTraceId = getTraceId(span);
+          console.info(`[analysis] start trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`);
+
+          return analyzeFromMoxfieldUrl({
             moxfieldUrl: values.moxfieldUrl,
             startDate,
             endDate,
@@ -120,7 +123,8 @@ export const actions: Actions = {
                   });
                 }
               : undefined
-          })
+          });
+        }
       );
       const shareId = await withSpan('analysis.persist', { 'analysis.client_ip': clientIp }, (span) =>
         saveAnalysisRun({
@@ -149,7 +153,7 @@ export const actions: Actions = {
         await completeProgress(progressId);
       }
       console.info(
-        `[analysis] success ip=${clientIp} moxfieldUrl=${values.moxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
+        `[analysis] success trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${values.moxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
       );
 
       return {
@@ -157,7 +161,10 @@ export const actions: Actions = {
         output: outputWithShare
       };
     } catch (error) {
-      console.error(`[analysis] failed ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`, error);
+      console.error(
+        `[analysis] failed trace_id=${analysisTraceId === 'none' ? getTraceId() : analysisTraceId} ip=${clientIp} moxfieldUrl=${values.moxfieldUrl}`,
+        error
+      );
       if (progressId) {
         await failProgress(progressId, 'Analysis failed. Please retry.');
       }

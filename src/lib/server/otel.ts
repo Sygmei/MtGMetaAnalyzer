@@ -76,6 +76,19 @@ export async function withSpan<T>(
   });
 }
 
+export function getTraceId(span?: Span | null): string {
+  const selected = span ?? trace.getActiveSpan();
+  if (!selected) {
+    return 'none';
+  }
+
+  const traceId = selected.spanContext().traceId;
+  if (!traceId || /^0+$/.test(traceId)) {
+    return 'none';
+  }
+  return traceId;
+}
+
 function applyAttributes(span: Span, attributes: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(attributes)) {
     const parsed = normalizeAttribute(value);

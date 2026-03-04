@@ -85,6 +85,10 @@
   let progressRequestId = "";
   let progressSocket: WebSocket | null = null;
   let progressSocketConnected = false;
+  let progressPollTimer: ReturnType<typeof setInterval> | null = null;
+  let progressReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  let progressSocketAttempts = 0;
+  let lastProgressEventAt = 0;
   let currentProgressId = "";
 
   type ProgressPayload = {
@@ -110,12 +114,16 @@
     progress = 2;
     progressStageLabel = "Queued";
     progressMessage = "Preparing request...";
-    closeProgressSocket();
+    lastProgressEventAt = Date.now();
+    progressSocketAttempts = 0;
+    closeProgressTransport();
+    startProgressPolling(id);
     openProgressSocket(id);
   }
 
   function stopProgress(): void {
-    closeProgressSocket();
+    closeProgressTransport();
+    progressSocketAttempts = 0;
     progress = 100;
     progressMessage = "Finalizing results...";
     progressStageLabel = "Done";
@@ -132,28 +140,104 @@
     if (parsed.id !== currentProgressId) {
       return;
     }
+    lastProgressEventAt = Date.now();
     progress = Math.max(progress, Math.min(100, parsed.percent));
     progressMessage = parsed.error || parsed.message;
     progressStageLabel = mapStageLabel(parsed.stage);
+    if (parsed.done) {
+      stopProgressPolling();
+      closeProgressSocket();
+    }
+  }
+
+  function startProgressPolling(id: string): void {
+    stopProgressPolling();
+    void pollProgress(id);
+    progressPollTimer = setInterval(() => {
+      void pollProgress(id);
+    }, 1200);
+  }
+
+  function stopProgressPolling(): void {
+    if (!progressPollTimer) {
+      return;
+    }
+    clearInterval(progressPollTimer);
+    progressPollTimer = null;
+  }
+
+  async function pollProgress(id: string): Promise<void> {
+    if (!id || id !== currentProgressId || typeof window === "undefined") {
+      return;
+    }
+    if (progressSocketConnected && Date.now() - lastProgressEventAt < 4000) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/progress/${encodeURIComponent(id)}`, {
+        cache: "no-store",
+      });
+      if (!response.ok) {
+        return;
+      }
+      const payload = (await response.json()) as Partial<ProgressPayload>;
+      if (!payload || typeof payload !== "object" || typeof payload.id !== "string") {
+        return;
+      }
+      applyProgressState(payload as ProgressPayload);
+    } catch {
+      // keep polling until the request resolves
+    }
+  }
+
+  function scheduleSocketReconnect(id: string): void {
+    if (!isSubmitting || currentProgressId !== id) {
+      return;
+    }
+    if (progressReconnectTimer) {
+      clearTimeout(progressReconnectTimer);
+      progressReconnectTimer = null;
+    }
+    progressSocketAttempts += 1;
+    const delayMs = Math.min(4500, 400 * 2 ** Math.max(0, progressSocketAttempts - 1));
+    progressReconnectTimer = setTimeout(() => {
+      progressReconnectTimer = null;
+      if (!isSubmitting || currentProgressId !== id || progressSocketConnected) {
+        return;
+      }
+      openProgressSocket(id);
+    }, delayMs);
   }
 
   function openProgressSocket(id: string): void {
     if (typeof window === "undefined") {
       return;
     }
+    closeProgressSocket();
     const url = progressWebSocketUrl();
 
     try {
       const socket = new WebSocket(url);
       progressSocket = socket;
       socket.onopen = () => {
+        if (currentProgressId !== id) {
+          try {
+            socket.close();
+          } catch {
+            // ignore close errors
+          }
+          return;
+        }
         progressSocketConnected = true;
+        progressSocketAttempts = 0;
         socket.send(
           JSON.stringify({
             type: "subscribe",
             progressId: id,
           }),
         );
+        void pollProgress(id);
       };
 
       socket.onmessage = (event) => {
@@ -165,7 +249,14 @@
       };
 
       socket.onclose = () => {
+        const shouldReconnect = progressSocket === socket;
+        if (progressSocket === socket) {
+          progressSocket = null;
+        }
         progressSocketConnected = false;
+        if (shouldReconnect) {
+          scheduleSocketReconnect(id);
+        }
       };
 
       socket.onerror = () => {
@@ -173,22 +264,31 @@
       };
     } catch {
       progressSocketConnected = false;
-      progressMessage = "Could not connect to progress socket.";
+      scheduleSocketReconnect(id);
     }
   }
 
   function closeProgressSocket(): void {
     progressSocketConnected = false;
+    if (progressReconnectTimer) {
+      clearTimeout(progressReconnectTimer);
+      progressReconnectTimer = null;
+    }
     if (!progressSocket) {
       return;
     }
+    const socket = progressSocket;
+    progressSocket = null;
     try {
-      progressSocket.close();
+      socket.close();
     } catch {
       // ignore close errors
-    } finally {
-      progressSocket = null;
     }
+  }
+
+  function closeProgressTransport(): void {
+    stopProgressPolling();
+    closeProgressSocket();
   }
 
   function progressWebSocketUrl(): string {
@@ -257,7 +357,7 @@
 
       const shareUrl = extractShareUrl(result);
       if (shareUrl) {
-        closeProgressSocket();
+        closeProgressTransport();
         progress = 100;
         progressStageLabel = "Done";
         progressMessage = "Opening shared permalink...";
@@ -298,7 +398,7 @@
   }
 
   onDestroy(() => {
-    closeProgressSocket();
+    closeProgressTransport();
   });
 </script>
 

@@ -1,8 +1,10 @@
 import type { Handle } from '@sveltejs/kit';
 
 import { initOpenTelemetry, withSpan } from '$lib/server/otel';
+import { ensureProgressWebSocketServer } from '$lib/server/progress-ws';
 
 initOpenTelemetry();
+ensureProgressWebSocketServer();
 
 export const handle: Handle = async ({ event, resolve }) => {
   const clientIp = resolveClientIp(event);
