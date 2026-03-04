@@ -208,3 +208,8 @@ __marimo__/
 
 html_examples/
 cache/
+node_modules/
+.svelte-kit/
+.vercel/
+!src/lib/
+!src/lib/**

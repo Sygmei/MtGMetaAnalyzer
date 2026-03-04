@@ -1,92 +1,86 @@
-# MtGMetaAnalyzer
+# MtG Meta Analyzer (SvelteKit + PostgreSQL)
 
-CLI project to:
+Web app to analyze a Duel Commander Moxfield deck against MtgTop8 data.
 
-1. Read a Moxfield deck URL.
-2. Detect the Duel Commander commander(s) from Moxfield.
-3. Find the commander archetype on MtgTop8 Duel Commander.
-4. Force MtgTop8 period to `All Commander decks`.
-5. Crawl all commander pages and cache each deck with metadata:
-   - Player
-   - Event
-   - Event Level
-   - Rank
-   - Event Date
-6. Analyze cached decks over a configurable date range to suggest:
-   - cards to keep (most present in distinct decks)
-   - cards to cut (least present in distinct decks)
+## What it does
 
-## Install (`uv`)
+1. You paste a Moxfield deck URL.
+2. Server-side Playwright always fetches commander and decklist from Moxfield.
+3. App finds the matching Duel Commander archetype on MtgTop8.
+4. App checks PostgreSQL cache for that commander and finds the most recent cached event date.
+5. App crawls MtgTop8 and fetches only decks newer than that cached date.
+6. New decks are stored in PostgreSQL.
+7. App analyzes your deck against cached MtgTop8 decks and returns:
+   - cards to keep (most present in other decks)
+   - cards to cut (least present in other decks)
+   - cards to add (missing in your deck but common in other decks)
 
-```bash
-uv sync
-uv run playwright install chromium
-```
+## Stack
 
-## Usage
+- SvelteKit (frontend + backend)
+- TypeScript
+- PostgreSQL
+- Drizzle ORM
+- Playwright (Moxfield extraction)
+- Cheerio (HTML parsing)
 
-### 1) Fetch and cache MtgTop8 data
+## Environment
 
-```bash
-uv run mtg-meta fetch \
-  --moxfield-url 'https://www.moxfield.com/decks/<deck_id>' \
-  --cache-root cache
-```
-
-With verbose logs:
+Create `.env` with:
 
 ```bash
-uv run mtg-meta -v fetch \
-  --moxfield-url 'https://www.moxfield.com/decks/<deck_id>' \
-  --cache-root cache
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/mtg_meta_analyzer
 ```
 
-Optional:
-
-- `--max-pages 3` to limit pagination during testing.
-- `--delay-seconds 0.5` to slow down requests.
-- `--moxfield-headed` to run Playwright with a visible browser window.
-- `--moxfield-only` to only fetch/cache `moxfield_deck.json` and skip MtgTop8 retrieval.
-- `-v` / `--verbose` for debug-level retrieval logs.
-
-Cache output:
-
-- `cache/<moxfield_deck_id>/moxfield_deck.json`
-- `cache/<moxfield_deck_id>/mtgtop8_commander.json`
-- `cache/<moxfield_deck_id>/decks.json`
-
-### 2) Analyze keep/cut
+## Setup
 
 ```bash
-uv run mtg-meta analyze \
-  --moxfield-url 'https://www.moxfield.com/decks/<deck_id>' \
-  --cache-root cache \
-  --keep-top 20 \
-  --cut-top 20 \
-  --add-top 20
+npm install
+npx playwright install chromium
+npm run db:migrate
+# optional when schema changes:
+# npm run db:generate
 ```
 
-Notes:
+## Run
 
-- `analyze` is cache-only and works fully offline (no Moxfield/MtgTop8 requests).
-- If `--moxfield-url` is omitted, the tool auto-selects the only cached deck under `--cache-root`.
-- If multiple cached decks exist, pass either `--moxfield-url` or `--deck-id`.
-- `--start-date` and `--end-date` are optional:
-  - omit both: all cached dates
-  - set only `--start-date`: from that date onward
-  - set only `--end-date`: up to that date
+```bash
+npm run dev
+```
 
-Output:
+Open the local URL shown by Vite (usually `http://localhost:5173`).
 
-- `cache/<moxfield_deck_id>/analysis-<date-range>.json`
+## Build
+
+```bash
+npm run check
+npm run build
+npm run preview
+```
+
+## Database schema
+
+Migrations are in `migrations/` and are applied by:
+
+```bash
+npm run db:migrate
+```
+
+Main tables:
+
+- `mtgtop8_commanders`
+- `mtgtop8_decks`
+- `schema_migrations`
+
+## Cache behavior
+
+- Moxfield decks are never cached.
+- MtgTop8 decks are cached in PostgreSQL.
+- Incremental updates are date-based per commander (newer-than-latest-cached).
+- `Refresh MtgTop8 cache` in UI forces a full crawl pass (deduped by `deck_url`).
 
 ## Notes
 
-- MtgTop8 and Moxfield can change markup/API without notice. The implementation includes fallbacks but may need selector updates.
-- Date parsing supports `DD/MM/YYYY`, `DD/MM/YY`, and `YYYY-MM-DD`.
-- Analysis outputs `keep`, `cut`, and `to_add` recommendations.
-- `to_add` contains cards missing from your deck that appear in many filtered MtgTop8 decks.
-- Moxfield retrieval is Playwright-only (no direct `requests` calls to Moxfield APIs).
-- Commander and mainboard are extracted from the rendered deck page HTML (not only from network JSON payload shape).
-- You can override user-agent with `MOXFIELD_USER_AGENT`.
-- MtgTop8 commander discovery scans multiple Duel Commander URLs and reports scan diagnostics when no archetype list is found.
+- Moxfield extraction is Playwright-only.
+- MtgTop8 and Moxfield markup can change; selectors may need updates over time.
+- Existing Python implementation remains in `src/mtg_meta_analyzer` as legacy reference.
