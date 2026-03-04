@@ -1,2 +1,0 @@
-"""MtG meta analyzer package."""
-
