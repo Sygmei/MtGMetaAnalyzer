@@ -23,6 +23,7 @@ interface AnalyzePipelineInput {
   headless?: boolean;
   maxPages?: number;
   delaySeconds?: number;
+  mtgtop8DeckFetchConcurrency?: number;
   onProgress?: (event: AnalyzePipelineProgressEvent) => void;
 }
 
@@ -89,6 +90,7 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
       );
 
       const refresh = Boolean(input.refreshCache);
+      const deckFetchConcurrency = resolveMtgTop8DeckFetchConcurrency(input.mtgtop8DeckFetchConcurrency);
       const latestCachedEventDate = refresh
         ? null
         : await withSpan('db.get_latest_cached_date', { 'commander.slug': commanderSlug }, () =>
@@ -107,6 +109,7 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
           mtgtop8.crawlCommanderDecks(commanderEntry.url, {
             maxPages: input.maxPages,
             delaySeconds: input.delaySeconds,
+            deckFetchConcurrency,
             newerThan: latestCachedEventDate,
             onProgress: (event) => {
               const percentHint = computeMtgTop8PercentHint(event);
@@ -171,6 +174,17 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
       };
     }
   );
+}
+
+function resolveMtgTop8DeckFetchConcurrency(override?: number): number {
+  const candidate =
+    typeof override === 'number' && Number.isFinite(override)
+      ? override
+      : Number(process.env.MTGTOP8_DECK_FETCH_CONCURRENCY || '3');
+  if (!Number.isFinite(candidate)) {
+    return 3;
+  }
+  return Math.max(1, Math.min(12, Math.trunc(candidate)));
 }
 
 function computeMtgTop8PercentHint(event: CrawlProgressEvent): number {

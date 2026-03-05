@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { fail } from '@sveltejs/kit';
 
 import { saveAnalysisRun } from '$lib/server/analysis-runs-repo';
+import { isAppError } from '$lib/server/app-error';
 import { normalizeMoxfieldDeckUrl } from '$lib/server/moxfield';
 import { getTraceId, withSpan } from '$lib/server/otel';
 import { completeProgress, failProgress, initProgress, updateProgress } from '$lib/server/progress';
@@ -54,12 +55,15 @@ export const actions: Actions = {
     try {
       normalizedMoxfieldUrl = normalizeMoxfieldDeckUrl(values.moxfieldUrl);
       values.moxfieldUrl = normalizedMoxfieldUrl;
-    } catch {
+    } catch (error) {
+      const appError = isAppError(error) ? error : null;
+      const status = appError?.httpStatusCode ?? 400;
+      const userError = appError?.userFacingError ?? 'Invalid Moxfield URL. Use moxfield.com/decks/<id>';
       if (progressId) {
-        await failProgress(progressId, 'Invalid Moxfield URL');
+        await failProgress(progressId, userError);
       }
-      return fail(400, {
-        error: 'Invalid Moxfield URL. Use moxfield.com/decks/<id>',
+      return fail(status, {
+        error: userError,
         traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
@@ -141,8 +145,24 @@ export const actions: Actions = {
               ? (event) => {
                   void updateProgress(progressId, {
                     stage: event.stage,
+                    activeStageKey:
+                      event.stage === 'done' ? 'analysis' : event.stage,
                     percent: event.percentHint,
-                    message: event.message
+                    message: event.message,
+                    details: event.mtgtop8
+                      ? {
+                          mtgtop8: {
+                            phase: event.mtgtop8.phase,
+                            currentPage: event.mtgtop8.currentPage,
+                            totalPages: event.mtgtop8.totalPages,
+                            scannedPages: event.mtgtop8.scannedPages,
+                            rowsOnPage: event.mtgtop8.rowsOnPage,
+                            rowsToFetchOnPage: event.mtgtop8.rowsToFetchOnPage,
+                            fetchedOnPage: event.mtgtop8.fetchedOnPage,
+                            fetchedDecks: event.mtgtop8.fetchedDecks
+                          }
+                        }
+                      : {}
                   });
                 }
               : undefined
@@ -188,15 +208,29 @@ export const actions: Actions = {
       };
     } catch (error) {
       const traceId = ensureTraceId(analysisTraceId === 'none' ? getTraceId() : analysisTraceId);
+      const appError = isAppError(error) ? error : null;
+      const status = appError?.httpStatusCode ?? 500;
+      const userError = appError?.userFacingError ?? null;
+      const errorType = appError?.errorTypeName ?? 'UnhandledAnalysisError';
       console.error(
-        `[analysis] failed trace_id=${traceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl || values.moxfieldUrl}`,
+        `[analysis] failed trace_id=${traceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl || values.moxfieldUrl} status=${status} type=${errorType} admin_error=${appError?.adminFacingError || getErrorMessage(error)}`,
         error
       );
       if (progressId) {
-        await failProgress(progressId, `Analysis failed. Trace ID: ${traceId}`);
+        const progressMessage =
+          status >= 500
+            ? `Analysis failed. Trace ID: ${traceId}`
+            : `${userError || 'The request could not be completed.'} (Trace ID: ${traceId})`;
+        await failProgress(progressId, progressMessage);
       }
-      return fail(500, {
-        error: 'Analysis failed. Please retry.',
+      if (status >= 500) {
+        return fail(500, {
+          traceId,
+          values: { ...DEFAULT_VALUES, ...values }
+        });
+      }
+      return fail(status, {
+        error: userError || 'The request could not be completed.',
         traceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
@@ -261,4 +295,14 @@ function resolveClientIp(event: Parameters<Actions['default']>[0]): string {
   }
 
   return 'unknown';
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message || '';
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  return '';
 }

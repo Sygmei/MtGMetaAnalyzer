@@ -1,6 +1,7 @@
 import { eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 
+import { AppError } from './app-error';
 import { analysisRuns } from './db-schema';
 import { getReadDb, getWriteDb } from './db';
 import type { AnalyzeOutput } from './types';
@@ -49,7 +50,12 @@ export async function saveAnalysisRun(input: SaveAnalysisRunInput): Promise<stri
     }
   }
 
-  throw new Error('Could not allocate a unique share id for analysis run');
+  throw new AppError({
+    userFacingError: 'Could not save analysis permalink. Please retry.',
+    adminFacingError: 'Could not allocate a unique share id for analysis run after 8 attempts.',
+    errorTypeName: 'AnalysisShareIdAllocationError',
+    httpStatusCode: 500
+  });
 }
 
 export async function findAnalysisRunByShareId(shareId: string): Promise<{

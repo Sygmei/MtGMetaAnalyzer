@@ -7,6 +7,11 @@ initOpenTelemetry();
 export const handle: Handle = async ({ event, resolve }) => {
   const clientIp = resolveClientIp(event);
   const requestKind = classifyRequest(event.request.method, event.url.pathname);
+
+  if (requestKind === 'analysis_progress_poll') {
+    return await resolve(event);
+  }
+
   const spanName = `http.${requestKind}`;
   return await withSpan(
     spanName,

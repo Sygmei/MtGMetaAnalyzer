@@ -1,6 +1,7 @@
 import { load } from 'cheerio';
 import { eq, sql } from 'drizzle-orm';
 
+import { AppError } from './app-error';
 import { getReadDb, getWriteDb } from './db';
 import { duelCommanderBanlistCache } from './db-schema';
 import { DEFAULT_USER_AGENT, normalizeName } from './utils';
@@ -62,7 +63,12 @@ async function fetchFreshBanlist(): Promise<{ fetchedAtMs: number; normalizedCar
       signal: controller.signal
     });
     if (!response.ok) {
-      throw new Error(`Banlist fetch failed with status ${response.status}`);
+      throw new AppError({
+        userFacingError: 'Duel Commander banlist could not be refreshed.',
+        adminFacingError: `Banlist fetch failed status=${response.status} url=${sourceUrl}`,
+        errorTypeName: 'DuelCommanderBanlistFetchError',
+        httpStatusCode: 502
+      });
     }
 
     const html = await response.text();

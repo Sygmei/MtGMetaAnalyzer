@@ -82,39 +82,118 @@
   let progress = 0;
   let progressMessage = "Preparing request...";
   let progressStageLabel = "Queued";
-  let progressRequestId = "";
   let progressPollTimer: ReturnType<typeof setInterval> | null = null;
+  let progressSmoothingTimer: ReturnType<typeof setInterval> | null = null;
   let currentProgressId = "";
+  let backendTargetProgress = 2;
+  let activeProgressStage: ProgressStage = "queued";
+  let activeStageStartedAtMs = 0;
+  let latestProgressDetails: ProgressDetails = {};
+  let mtgtop8PageStartedAtMs = 0;
+  let mtgtop8CurrentPage = 0;
+  let mtgtop8EstimatedPageDurationMs = 5200;
+  let metroActiveStageKey = "queued";
+  let progressStages: ProgressStageItem[] = [];
+  let displayedProgressStages: ProgressStageItem[] = [{ key: "queued", label: "Queued" }];
+  let runStartedAtMs = 0;
+  let lastProgressUpdateAtMs = 0;
+  let backendProgressSettled = false;
+  let lastBackendStage: ProgressStage = "queued";
+  let lastBackendPercent = 0;
+  let lastBackendMessage = "";
+
+  type ProgressStage =
+    | "queued"
+    | "moxfield"
+    | "commander"
+    | "mtgtop8"
+    | "analysis"
+    | "done"
+    | "error";
+
+  type MtgTop8ProgressDetails = {
+    phase: "start" | "page" | "deck" | "complete";
+    currentPage: number;
+    totalPages: number | null;
+    scannedPages: number;
+    rowsOnPage: number;
+    rowsToFetchOnPage: number;
+    fetchedOnPage: number;
+    fetchedDecks: number;
+  };
+
+  type ProgressDetails = {
+    mtgtop8?: MtgTop8ProgressDetails;
+  };
+
+  type ProgressRange = {
+    min: number;
+    max: number;
+    durationMs: number;
+  };
+
+  type ProgressStageKey = "queued" | "moxfield" | "commander" | "mtgtop8" | "analysis";
+  type ProgressStageItem = {
+    key: ProgressStageKey;
+    label: string;
+  };
+
+  const PROGRESS_RANGES: Record<ProgressStage, ProgressRange> = {
+    queued: { min: 0, max: 5, durationMs: 2500 },
+    moxfield: { min: 5, max: 32, durationMs: 9000 },
+    commander: { min: 32, max: 35, durationMs: 3000 },
+    mtgtop8: { min: 35, max: 95, durationMs: 80000 },
+    analysis: { min: 95, max: 99, durationMs: 6000 },
+    done: { min: 100, max: 100, durationMs: 0 },
+    error: { min: 100, max: 100, durationMs: 0 },
+  };
 
   type ProgressPayload = {
     id: string;
-    stage:
-      | "queued"
-      | "moxfield"
-      | "commander"
-      | "mtgtop8"
-      | "analysis"
-      | "done"
-      | "error";
+    stage: ProgressStage;
+    activeStageKey?: ProgressStageKey;
+    stages?: ProgressStageItem[];
     percent: number;
     message: string;
     done: boolean;
     error: string | null;
+    details?: ProgressDetails;
   };
 
+  $: displayedProgressStages =
+    progressStages.length > 0
+      ? progressStages
+      : ([{ key: "queued", label: "Queued" }] as ProgressStageItem[]);
+
   function startProgress(id: string): void {
-    progressRequestId = id;
     currentProgressId = id;
     isSubmitting = true;
-    progress = 2;
+    progress = 0.8;
     progressStageLabel = "Queued";
     progressMessage = "Preparing request...";
+    backendTargetProgress = 2;
+    activeProgressStage = "queued";
+    metroActiveStageKey = "queued";
+    progressStages = [];
+    activeStageStartedAtMs = Date.now();
+    runStartedAtMs = activeStageStartedAtMs;
+    lastProgressUpdateAtMs = activeStageStartedAtMs;
+    backendProgressSettled = false;
+    lastBackendStage = "queued";
+    lastBackendPercent = 0;
+    lastBackendMessage = "";
+    latestProgressDetails = {};
+    mtgtop8CurrentPage = 0;
+    mtgtop8PageStartedAtMs = 0;
+    mtgtop8EstimatedPageDurationMs = 5200;
     stopProgressPolling();
+    startProgressSmoothing();
     startProgressPolling(id);
   }
 
   function stopProgress(): void {
     stopProgressPolling();
+    stopProgressSmoothing();
     progress = 100;
     progressMessage = "Finalizing results...";
     progressStageLabel = "Done";
@@ -131,9 +210,47 @@
     if (parsed.id !== currentProgressId) {
       return;
     }
-    progress = Math.max(progress, Math.min(100, parsed.percent));
+    if (parsed.stage !== activeProgressStage) {
+      activeProgressStage = parsed.stage;
+      activeStageStartedAtMs = Date.now();
+      if (parsed.stage !== "mtgtop8") {
+        mtgtop8CurrentPage = 0;
+        mtgtop8PageStartedAtMs = 0;
+      }
+    }
+    if (Array.isArray(parsed.stages) && parsed.stages.length > 0) {
+      progressStages = parsed.stages.filter(isProgressStageItem);
+    }
+
+    if (parsed.activeStageKey && isProgressStageKey(parsed.activeStageKey)) {
+      metroActiveStageKey = parsed.activeStageKey;
+    } else {
+      metroActiveStageKey = toProgressStageKey(parsed.stage);
+    }
+
+    latestProgressDetails = parsed.details || {};
+    trackMtgTop8PageTiming(latestProgressDetails.mtgtop8);
+    backendTargetProgress = computeBackendTarget(parsed);
+    const hasMeaningfulBackendSignal =
+      parsed.stage !== lastBackendStage ||
+      parsed.percent > lastBackendPercent + 0.25 ||
+      parsed.done ||
+      (parsed.stage !== "queued" && parsed.message !== lastBackendMessage);
+
+    if (hasMeaningfulBackendSignal) {
+      lastProgressUpdateAtMs = Date.now();
+    }
+    if (parsed.stage !== "queued" || parsed.percent > 5 || parsed.done) {
+      backendProgressSettled = true;
+    }
+    lastBackendStage = parsed.stage;
+    lastBackendPercent = parsed.percent;
+    lastBackendMessage = parsed.message || "";
+
     progressMessage = parsed.error || parsed.message;
-    progressStageLabel = mapStageLabel(parsed.stage);
+    progressStageLabel = mapStageLabel(parsed.stage, parsed.details);
+    startProgressSmoothing();
+
     if (parsed.done) {
       stopProgressPolling();
     }
@@ -144,7 +261,7 @@
     void pollProgress(id);
     progressPollTimer = setInterval(() => {
       void pollProgress(id);
-    }, 1200);
+    }, 900);
   }
 
   function stopProgressPolling(): void {
@@ -153,6 +270,48 @@
     }
     clearInterval(progressPollTimer);
     progressPollTimer = null;
+  }
+
+  function startProgressSmoothing(): void {
+    if (progressSmoothingTimer) {
+      return;
+    }
+    progressSmoothingTimer = setInterval(() => {
+      tickProgress();
+    }, 120);
+  }
+
+  function stopProgressSmoothing(): void {
+    if (!progressSmoothingTimer) {
+      return;
+    }
+    clearInterval(progressSmoothingTimer);
+    progressSmoothingTimer = null;
+  }
+
+  function tickProgress(): void {
+    if (!isSubmitting) {
+      return;
+    }
+
+    const estimatedTarget = computeEstimatedTarget(activeProgressStage);
+    const fallbackTarget = computeFallbackTargetWhenStale();
+    const rawTarget = Math.max(backendTargetProgress, estimatedTarget, fallbackTarget);
+    const target = Math.max(progress, Math.min(100, rawTarget));
+    const delta = target - progress;
+    if (delta <= 0) {
+      return;
+    }
+
+    const isTerminal = activeProgressStage === "done" || activeProgressStage === "error";
+    const step = isTerminal
+      ? Math.max(1.8, delta * 0.36)
+      : Math.max(0.09, Math.min(1.25, delta * 0.18));
+    progress = Math.min(target, progress + step);
+
+    if (!backendProgressSettled) {
+      metroActiveStageKey = toProgressStageKey(stageFromProgress(progress));
+    }
   }
 
   async function pollProgress(id: string): Promise<void> {
@@ -178,14 +337,212 @@
     }
   }
 
-  function mapStageLabel(stage: ProgressPayload["stage"]): string {
-    if (stage === "queued") return "Queued";
-    if (stage === "moxfield") return "Moxfield";
-    if (stage === "commander") return "Commander";
-    if (stage === "mtgtop8") return "MtgTop8";
-    if (stage === "analysis") return "Analysis";
+  function mapStageLabel(stage: ProgressPayload["stage"], details?: ProgressDetails): string {
+    if (stage === "queued") return getStageLabel("queued");
+    if (stage === "moxfield") return getStageLabel("moxfield");
+    if (stage === "commander") return getStageLabel("commander");
+    if (stage === "mtgtop8") {
+      const base = getStageLabel("mtgtop8");
+      const page = details?.mtgtop8?.currentPage;
+      const total = details?.mtgtop8?.totalPages;
+      if (page && total && total > 0) {
+        return `${base} (Page ${page}/${total})`;
+      }
+      if (page) {
+        return `${base} (Page ${page})`;
+      }
+      return base;
+    }
+    if (stage === "analysis") return getStageLabel("analysis");
     if (stage === "done") return "Done";
     return "Error";
+  }
+
+  function computeBackendTarget(payload: ProgressPayload): number {
+    if (payload.stage === "done" || payload.stage === "error") {
+      return 100;
+    }
+    if (payload.stage === "mtgtop8") {
+      return computeMtgTop8Target(payload.details?.mtgtop8, false);
+    }
+
+    const range = PROGRESS_RANGES[payload.stage];
+    const globalRatio = clamp(payload.percent / 100, 0, 1);
+    const base = range.min + (range.max - range.min) * globalRatio;
+    return clamp(base, range.min, range.max - 0.2);
+  }
+
+  function computeEstimatedTarget(stage: ProgressStage): number {
+    if (stage === "done" || stage === "error") {
+      return 100;
+    }
+    if (stage === "mtgtop8") {
+      return computeMtgTop8Target(latestProgressDetails.mtgtop8, true);
+    }
+
+    const range = PROGRESS_RANGES[stage];
+    const elapsed = Date.now() - activeStageStartedAtMs;
+    const ratio = range.durationMs > 0 ? Math.min(0.92, elapsed / range.durationMs) : 1;
+    const target = range.min + (range.max - range.min) * ratio;
+    return clamp(target, range.min, range.max - 0.25);
+  }
+
+  function computeMtgTop8Target(details: MtgTop8ProgressDetails | undefined, includeTimeBlend: boolean): number {
+    const range = PROGRESS_RANGES.mtgtop8;
+    const span = range.max - range.min;
+    const now = Date.now();
+
+    if (!details) {
+      const elapsed = now - activeStageStartedAtMs;
+      const ratio = Math.min(0.9, elapsed / range.durationMs);
+      return range.min + span * ratio;
+    }
+
+    const totalPages = details.totalPages && details.totalPages > 0 ? details.totalPages : null;
+    if (!totalPages) {
+      const pagesSeen = Math.max(details.scannedPages || 0, details.currentPage || 0);
+      const pageRatio = Math.min(0.9, pagesSeen * 0.04);
+      const elapsed = now - activeStageStartedAtMs;
+      const timeRatio = Math.min(0.9, elapsed / range.durationMs);
+      return range.min + span * Math.max(pageRatio, timeRatio);
+    }
+
+    const currentPage = Math.max(1, details.currentPage || 1);
+    const pageIndex = currentPage - 1;
+    let knownWithinPage = 0;
+    if (details.phase === "complete") {
+      knownWithinPage = 1;
+    } else if (details.rowsToFetchOnPage > 0) {
+      knownWithinPage = clamp(details.fetchedOnPage / details.rowsToFetchOnPage, 0, 1);
+    } else if (details.phase === "deck") {
+      knownWithinPage = 0.14;
+    } else if (details.phase === "page") {
+      knownWithinPage = 0.06;
+    }
+
+    let timeWithinPage = 0;
+    if (includeTimeBlend && mtgtop8PageStartedAtMs > 0) {
+      timeWithinPage = clamp(
+        (now - mtgtop8PageStartedAtMs) / Math.max(1200, mtgtop8EstimatedPageDurationMs),
+        0,
+        0.96
+      );
+    }
+    const withinPage = Math.max(knownWithinPage, timeWithinPage);
+    const ratio =
+      details.phase === "complete"
+        ? 1
+        : clamp((pageIndex + withinPage) / totalPages, 0, 0.995);
+    const raw = range.min + span * ratio;
+    return details.phase === "complete" ? range.max : clamp(raw, range.min, range.max - 0.18);
+  }
+
+  function computeFallbackTargetWhenStale(): number {
+    if (activeProgressStage === "done" || activeProgressStage === "error") {
+      return 100;
+    }
+    const now = Date.now();
+    const staleMs = now - lastProgressUpdateAtMs;
+    if (staleMs < 1600 || runStartedAtMs <= 0) {
+      return 0;
+    }
+
+    const elapsed = now - runStartedAtMs;
+    const softTimelineMs = 105000;
+    const ratio = clamp(elapsed / softTimelineMs, 0, 0.985);
+    return 2 + ratio * 94;
+  }
+
+  function trackMtgTop8PageTiming(details: MtgTop8ProgressDetails | undefined): void {
+    if (!details) {
+      return;
+    }
+    const page = Math.max(1, details.currentPage || 1);
+    const now = Date.now();
+    if (mtgtop8CurrentPage === 0) {
+      mtgtop8CurrentPage = page;
+      mtgtop8PageStartedAtMs = now;
+      return;
+    }
+
+    if (page !== mtgtop8CurrentPage) {
+      const elapsed = now - mtgtop8PageStartedAtMs;
+      if (elapsed >= 250) {
+        const nextEstimate = mtgtop8EstimatedPageDurationMs * 0.7 + elapsed * 0.3;
+        mtgtop8EstimatedPageDurationMs = clamp(nextEstimate, 1200, 25000);
+      }
+      mtgtop8CurrentPage = page;
+      mtgtop8PageStartedAtMs = now;
+    } else if (mtgtop8PageStartedAtMs === 0) {
+      mtgtop8PageStartedAtMs = now;
+    }
+  }
+
+  function clamp(value: number, min: number, max: number): number {
+    if (!Number.isFinite(value)) {
+      return min;
+    }
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function stageClass(stage: ProgressStageKey): "done" | "active" | "pending" {
+    const idx = displayedProgressStages.findIndex((step) => step.key === stage);
+    if (idx === -1) {
+      return "pending";
+    }
+
+    const activeIndex = displayedProgressStages.findIndex((step) => step.key === metroActiveStageKey);
+    if (activeIndex < 0) {
+      return "pending";
+    }
+
+    if (idx < activeIndex) {
+      return "done";
+    }
+    if (idx === activeIndex) {
+      return "active";
+    }
+    return "pending";
+  }
+
+  function stageFromProgress(value: number): ProgressStage {
+    const p = clamp(value, 0, 100);
+    if (p < 5) return "queued";
+    if (p < 32) return "moxfield";
+    if (p < 35) return "commander";
+    if (p < 95) return "mtgtop8";
+    return "analysis";
+  }
+
+  function toProgressStageKey(stage: ProgressStage): ProgressStageKey {
+    if (stage === "done" || stage === "error") {
+      return "analysis";
+    }
+    return stage;
+  }
+
+  function isProgressStageKey(value: string): value is ProgressStageKey {
+    return value === "queued" || value === "moxfield" || value === "commander" || value === "mtgtop8" || value === "analysis";
+  }
+
+  function isProgressStageItem(value: unknown): value is ProgressStageItem {
+    if (!value || typeof value !== "object") {
+      return false;
+    }
+    const item = value as { key?: unknown; label?: unknown };
+    return isProgressStageKey(String(item.key || "")) && typeof item.label === "string" && Boolean(item.label.trim());
+  }
+
+  function getStageLabel(stageKey: ProgressStageKey): string {
+    return displayedProgressStages.find((stage) => stage.key === stageKey)?.label || stageKey;
+  }
+
+  function compactStageLabel(stage: ProgressStageItem): string {
+    if (stage.key === "queued") return "Queued";
+    if (stage.key === "moxfield") return "Moxfield";
+    if (stage.key === "commander") return "Commander";
+    if (stage.key === "mtgtop8") return "MtgTop8";
+    return "Analysis";
   }
 
   function createProgressId(): string {
@@ -210,8 +567,10 @@
       if (shareUrl) {
         stopProgressPolling();
         progress = 100;
+        activeProgressStage = "done";
         progressStageLabel = "Done";
         progressMessage = "Opening shared permalink...";
+        stopProgressSmoothing();
         await goto(toInternalPath(shareUrl));
         return;
       }
@@ -250,6 +609,7 @@
 
   onDestroy(() => {
     stopProgressPolling();
+    stopProgressSmoothing();
   });
 </script>
 
@@ -272,6 +632,16 @@
         <div class="progress-fill" style={`width:${progress}%`}></div>
       </div>
       <p class="progress-message">{progressMessage}</p>
+      <div class="progress-metro" aria-hidden="true">
+        {#each displayedProgressStages as step, idx (step.key)}
+          <div class={`metro-step ${stageClass(step.key)} ${idx === displayedProgressStages.length - 1 ? "last" : ""}`}>
+            <span class="metro-pill" title={step.label} aria-label={step.label}>
+              <span class="metro-number">{idx + 1}</span>
+              <span class="metro-label">{compactStageLabel(step)}</span>
+            </span>
+          </div>
+        {/each}
+      </div>
     </section>
   {/if}
 
@@ -285,7 +655,6 @@
     </div>
 
     <form method="POST" class="form" use:enhance={enhanceSubmit}>
-      <input type="hidden" name="progressId" value={progressRequestId} />
       <label class="field full">
         <span>Moxfield deck URL</span>
         <input
@@ -355,9 +724,9 @@
 
     {#if form?.error}
       <p class="error">{form.error}</p>
-      {#if form?.traceId}
-        <p class="error-trace">Trace ID: <code>{form.traceId}</code></p>
-      {/if}
+    {/if}
+    {#if form?.traceId}
+      <p class="error-trace">Trace ID: <code>{form.traceId}</code></p>
     {/if}
   </section>
 
@@ -569,6 +938,129 @@
     margin: 0.44rem 0 0;
     font-size: 0.82rem;
     color: #b9d2df;
+  }
+
+  .progress-metro {
+    margin-top: 0.66rem;
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    padding-bottom: 0.05rem;
+  }
+
+  .metro-step {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .metro-step::after {
+    content: "";
+    display: block;
+    width: 100%;
+    height: 2px;
+    margin: 0 0.38rem;
+    background: linear-gradient(90deg, rgba(79, 120, 143, 0.3), rgba(87, 136, 160, 0.22));
+  }
+
+  .metro-step.last {
+    flex: 0 0 auto;
+  }
+
+  .metro-step.last::after {
+    display: none;
+  }
+
+  .metro-pill {
+    width: 1.78rem;
+    height: 1.78rem;
+    min-width: 1.78rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
+    border-radius: 999px;
+    border: 1px solid rgba(135, 170, 188, 0.46);
+    background: rgba(15, 35, 46, 0.8);
+    padding: 0;
+    transition:
+      width 260ms ease,
+      padding 260ms ease,
+      border-color 200ms ease,
+      background 220ms ease;
+  }
+
+  .metro-number {
+    width: 1.78rem;
+    min-width: 1.78rem;
+    height: 1.78rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #b6d0de;
+    font-size: 0.78rem;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .metro-label {
+    max-width: 11.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: #d5e7f1;
+    font-size: 0.66rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    font-weight: 700;
+    opacity: 0;
+    transform: translateX(-0.35rem);
+    transition: all 250ms ease;
+    padding-right: 0.1rem;
+  }
+
+  .metro-step.active .metro-pill {
+    width: min(17.8rem, 62vw);
+    padding-right: 0.5rem;
+    border-color: rgba(126, 202, 222, 0.84);
+    background: linear-gradient(
+      120deg,
+      rgba(28, 106, 128, 0.88),
+      rgba(59, 153, 133, 0.84),
+      rgba(29, 123, 145, 0.9)
+    );
+    background-size: 180% 100%;
+    animation: metroFlow 2.8s ease-in-out infinite;
+  }
+
+  .metro-step.active .metro-number {
+    color: #05222b;
+  }
+
+  .metro-step.active .metro-label {
+    opacity: 1;
+    transform: translateX(0);
+    color: #ecf5fa;
+  }
+
+  .metro-step.done .metro-pill {
+    border-color: rgba(138, 216, 194, 0.65);
+    background: linear-gradient(130deg, rgba(77, 182, 146, 0.82), rgba(147, 217, 194, 0.72));
+  }
+
+  .metro-step.done .metro-number {
+    color: #123941;
+  }
+
+  .metro-step.pending .metro-label {
+    color: #cfe3ee;
+  }
+
+  .metro-step.done::after {
+    background: linear-gradient(90deg, rgba(96, 223, 179, 0.74), rgba(129, 231, 194, 0.68));
   }
 
   .orb {
@@ -920,6 +1412,18 @@
     }
   }
 
+  @keyframes metroFlow {
+    0%,
+    100% {
+      background-position: 0% 50%;
+      filter: brightness(1);
+    }
+    50% {
+      background-position: 100% 50%;
+      filter: brightness(1.03);
+    }
+  }
+
   @media (max-width: 760px) {
     .grid.two,
     .grid.three,
@@ -940,6 +1444,36 @@
 
     .progress-shell {
       top: 0.55rem;
+    }
+
+    .progress-metro {
+      margin-top: 0.58rem;
+    }
+
+    .metro-step::after {
+      margin: 0 0.28rem;
+    }
+
+    .metro-pill {
+      width: 1.56rem;
+      height: 1.56rem;
+      min-width: 1.56rem;
+    }
+
+    .metro-number {
+      width: 1.56rem;
+      min-width: 1.56rem;
+      height: 1.56rem;
+      font-size: 0.72rem;
+    }
+
+    .metro-step.active .metro-pill {
+      width: min(14.6rem, 68vw);
+      padding-right: 0.4rem;
+    }
+
+    .metro-label {
+      font-size: 0.56rem;
     }
   }
 </style>

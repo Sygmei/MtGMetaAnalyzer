@@ -1,6 +1,7 @@
 // @ts-nocheck
 import { load } from 'cheerio';
 
+import { AppError } from './app-error';
 import type { CommanderEntry, DeckRecord } from './types';
 import {
   DEFAULT_USER_AGENT,
@@ -24,6 +25,7 @@ const META_HTTP_EQUIV_CHARSET_PATTERN =
   /<meta[^>]+http-equiv\s*=\s*["']content-type["'][^>]+content\s*=\s*["'][^"']*charset=([a-z0-9._-]+)/i;
 const SCRYFALL_NAMED_FUZZY_URL = 'https://api.scryfall.com/cards/named';
 const SCRYFALL_TIMEOUT_MS = 8_000;
+const DEFAULT_DECK_FETCH_CONCURRENCY = 3;
 const scryfallNameCache = new Map<string, string>();
 
 interface PageRequest {
@@ -35,6 +37,7 @@ interface PageRequest {
 interface CrawlOptions {
   maxPages?: number;
   delaySeconds?: number;
+  deckFetchConcurrency?: number;
   newerThan?: Date | null;
   onProgress?: (event: CrawlProgressEvent) => void;
 }
@@ -53,6 +56,13 @@ export interface CrawlProgressEvent {
   rowsToFetchOnPage: number;
   fetchedOnPage: number;
   fetchedDecks: number;
+}
+
+function normalizeDeckFetchConcurrency(value: number | undefined): number {
+  if (!Number.isFinite(value)) {
+    return DEFAULT_DECK_FETCH_CONCURRENCY;
+  }
+  return Math.max(1, Math.min(12, Math.trunc(Number(value))));
 }
 
 export class MtgTop8Client {
@@ -76,7 +86,12 @@ export class MtgTop8Client {
       entries = await this.searchCommanderEntries(commanders);
     }
     if (!entries.length) {
-      throw new Error('No commander archetypes discovered on MtgTop8');
+      throw new AppError({
+        userFacingError: 'No Duel Commander decks found on MtgTop8 for this commander yet.',
+        adminFacingError: `No commander archetypes discovered on MtgTop8 for queries: ${commanders.join(' | ')}`,
+        errorTypeName: 'MtgTop8CommanderNotFoundError',
+        httpStatusCode: 404
+      });
     }
 
     const wanted = commanders.map((name) => normalizeName(name)).filter(Boolean);
@@ -98,9 +113,12 @@ export class MtgTop8Client {
     }
 
     if (!best || best.score < 0.4) {
-      throw new Error(
-        `Unable to confidently match commander on MtgTop8. Best candidate '${best?.name || 'none'}' score=${best?.score.toFixed(2) || '0.00'}`
-      );
+      throw new AppError({
+        userFacingError: 'Could not find a matching Duel Commander archetype on MtgTop8 for this commander.',
+        adminFacingError: `Unable to confidently match commander on MtgTop8. Best candidate '${best?.name || 'none'}' score=${best?.score.toFixed(2) || '0.00'} queries=${commanders.join(' | ')}`,
+        errorTypeName: 'MtgTop8CommanderMatchLowConfidenceError',
+        httpStatusCode: 404
+      });
     }
 
     return best;
@@ -108,6 +126,7 @@ export class MtgTop8Client {
 
   async crawlCommanderDecks(commanderUrl: string, options: CrawlOptions = {}): Promise<DeckRecord[]> {
     const delayMs = options.delaySeconds == null ? this.delayMs : Math.max(0, Math.trunc(options.delaySeconds * 1000));
+    const deckFetchConcurrency = normalizeDeckFetchConcurrency(options.deckFetchConcurrency);
     const newerThanStamp = options.newerThan ? toDateStart(options.newerThan) : null;
     const firstUrl = withQueryParams(commanderUrl, { f: DUEL_COMMANDER_FORMAT, meta: DUEL_COMMANDER_ALL_META });
     const onProgress = options.onProgress;
@@ -173,26 +192,34 @@ export class MtgTop8Client {
       });
 
       let allRowsAreOlderOrEqual = parsed.rows.length > 0;
-      let fetchedOnPage = 0;
       for (const row of rowsToFetch) {
         const parsedRowDate = parseDate(row.eventDate);
         const rowStamp = parsedRowDate ? toDateStart(parsedRowDate) : null;
         allRowsAreOlderOrEqual = false;
         seenDeckUrls.add(row.deckUrl);
-        const { cards, sections } = await this.fetchDeckCards(row.deckUrl);
-        decks.push({ ...row, cards, sections });
-        fetchedOnPage += 1;
-        onProgress?.({
-          phase: 'deck',
-          currentPage,
-          totalPages: knownTotalPages,
-          scannedPages: pageCount,
-          rowsOnPage: parsed.rows.length,
-          rowsToFetchOnPage: rowsToFetch.length,
-          fetchedOnPage,
-          fetchedDecks: decks.length
-        });
-        await sleep(delayMs);
+      }
+
+      let fetchedOnPage = 0;
+      const fetchedRows = await this.fetchDeckRowsConcurrently({
+        rows: rowsToFetch,
+        concurrency: deckFetchConcurrency,
+        delayMs,
+        onFetched: () => {
+          fetchedOnPage += 1;
+          onProgress?.({
+            phase: 'deck',
+            currentPage,
+            totalPages: knownTotalPages,
+            scannedPages: pageCount,
+            rowsOnPage: parsed.rows.length,
+            rowsToFetchOnPage: rowsToFetch.length,
+            fetchedOnPage,
+            fetchedDecks: decks.length + fetchedOnPage
+          });
+        }
+      });
+      for (const item of fetchedRows) {
+        decks.push(item);
       }
 
       if (newerThanStamp != null && parsed.rows.length > 0 && rowsToFetch.length === 0) {
@@ -242,6 +269,45 @@ export class MtgTop8Client {
     }
 
     return { cards, sections: normalizedSections };
+  }
+
+  private async fetchDeckRowsConcurrently(args: {
+    rows: DeckRecord[];
+    concurrency: number;
+    delayMs: number;
+    onFetched: () => void;
+  }): Promise<DeckRecord[]> {
+    if (!args.rows.length) {
+      return [];
+    }
+
+    const concurrency = Math.max(1, Math.min(args.concurrency, args.rows.length));
+    const results = new Array<DeckRecord>(args.rows.length);
+    let cursor = 0;
+
+    const workers = Array.from({ length: concurrency }, () =>
+      (async () => {
+        while (true) {
+          const index = cursor;
+          cursor += 1;
+          if (index >= args.rows.length) {
+            return;
+          }
+
+          const row = args.rows[index];
+          const { cards, sections } = await this.fetchDeckCards(row.deckUrl);
+          results[index] = { ...row, cards, sections };
+          args.onFetched();
+
+          if (args.delayMs > 0) {
+            await sleep(args.delayMs);
+          }
+        }
+      })()
+    );
+
+    await Promise.all(workers);
+    return results.filter(Boolean);
   }
 
   private async retryPageRequestIfStalled(args: {
@@ -492,7 +558,12 @@ export class MtgTop8Client {
         signal: controller.signal
       });
       if (!response.ok) {
-        throw new Error(`MtgTop8 GET failed ${response.status}: ${url}`);
+        throw new AppError({
+          userFacingError: 'MtgTop8 is temporarily unavailable. Please retry in a few minutes.',
+          adminFacingError: `MtgTop8 GET failed status=${response.status} url=${url}`,
+          errorTypeName: 'MtgTop8GetFailedError',
+          httpStatusCode: 502
+        });
       }
       return await this.readHtmlResponse(response);
     } finally {
@@ -516,7 +587,12 @@ export class MtgTop8Client {
         signal: controller.signal
       });
       if (!response.ok) {
-        throw new Error(`MtgTop8 POST failed ${response.status}: ${url}`);
+        throw new AppError({
+          userFacingError: 'MtgTop8 is temporarily unavailable. Please retry in a few minutes.',
+          adminFacingError: `MtgTop8 POST failed status=${response.status} url=${url} body=${body}`,
+          errorTypeName: 'MtgTop8PostFailedError',
+          httpStatusCode: 502
+        });
       }
       return await this.readHtmlResponse(response);
     } finally {

@@ -3,6 +3,7 @@ import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http';
 import { resourceFromAttributes } from '@opentelemetry/resources';
 import { BatchSpanProcessor } from '@opentelemetry/sdk-trace-base';
 import { NodeTracerProvider } from '@opentelemetry/sdk-trace-node';
+import { isAppError } from './app-error';
 
 const TRACER_NAME = 'mtg-meta-analyzer';
 const DEFAULT_SERVICE_NAME = 'mtg-meta-analyzer-web';
@@ -64,6 +65,9 @@ export async function withSpan<T>(
     try {
       return await fn(span);
     } catch (error) {
+      if (isAppError(error)) {
+        applyAttributes(span, error.toTraceAttributes());
+      }
       span.recordException(error as Error);
       span.setStatus({
         code: SpanStatusCode.ERROR,

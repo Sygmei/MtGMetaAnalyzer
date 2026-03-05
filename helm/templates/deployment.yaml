@@ -81,6 +81,37 @@ spec:
                 secretKeyRef:
                   name: postgresql-credentials
                   key: connection-string-admin
+            - name: S3_ENDPOINT_URL
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds
+                  key: endpoint-url
+            - name: S3_REGION_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds
+                  key: region-name
+            - name: S3_BUCKET_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds
+                  key: bucket-name
+            - name: S3_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds
+                  key: access-key-id
+            - name: S3_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: s3-creds
+                  key: secret-key
+            - name: S3_FORCE_PATH_STYLE
+              value: "true"
+            - name: S3_SCREENSHOT_PREFIX
+              value: "traces/screenshots"
+            - name: MTGTOP8_DECK_FETCH_CONCURRENCY
+              value: "3"
           livenessProbe:
             httpGet:
               path: /
