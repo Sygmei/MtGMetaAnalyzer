@@ -1,12 +1,17 @@
 export type CardMap = Record<string, number>;
 
-export interface MoxfieldDeck {
+export type DeckSource = 'moxfield' | 'archidekt';
+
+export interface InputDeck {
+  source: DeckSource;
   deckId: string;
   name: string;
   url: string;
   commanders: string[];
   cards: CardMap;
 }
+
+export type MoxfieldDeck = InputDeck;
 
 export interface DeckRecord {
   deckName: string;
@@ -54,7 +59,7 @@ export interface CachedCommanderInfo {
 }
 
 export interface AnalyzeOutput {
-  moxfieldDeck: MoxfieldDeck;
+  moxfieldDeck: InputDeck;
   commander: CachedCommanderInfo;
   analyzedAt: string;
   analysis: AnalysisResult;

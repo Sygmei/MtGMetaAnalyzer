@@ -14,6 +14,7 @@
 
   type AnalysisTab = 'cut' | 'add' | 'keep';
   let activeAnalysisTab: AnalysisTab = 'cut';
+  $: deckSourceLabel = data.output.moxfieldDeck.source === 'archidekt' ? 'Archidekt' : 'Moxfield';
 </script>
 
 <svelte:head>
@@ -44,7 +45,7 @@
     </p>
     <div class="actions">
       <a href="/" rel="noreferrer">New analysis</a>
-      <a href={data.output.moxfieldDeck.url} target="_blank" rel="noreferrer">Open Moxfield</a>
+      <a href={data.output.moxfieldDeck.url} target="_blank" rel="noreferrer">Open {deckSourceLabel}</a>
       <a href={data.shareUrl} target="_blank" rel="noreferrer">Permalink</a>
     </div>
   </section>

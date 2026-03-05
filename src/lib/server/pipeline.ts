@@ -1,6 +1,6 @@
 import { analyzeCards } from './analysis';
+import { fetchInputDeckFromUrl } from './deck-source';
 import { getDuelCommanderDeckBannedCardsNormalized } from './duel-commander-banlist';
-import { fetchMoxfieldDeck } from './moxfield';
 import {
   getLatestCachedEventDate,
   insertDecksForCommander,
@@ -13,7 +13,7 @@ import type { AnalyzeOutput } from './types';
 import { formatDate, slugify } from './utils';
 
 interface AnalyzePipelineInput {
-  moxfieldUrl: string;
+  deckUrl: string;
   startDate?: Date | null;
   endDate?: Date | null;
   keepTop?: number;
@@ -34,11 +34,11 @@ export interface AnalyzePipelineProgressEvent {
   mtgtop8?: CrawlProgressEvent;
 }
 
-export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promise<AnalyzeOutput> {
+export async function analyzeFromDeckUrl(input: AnalyzePipelineInput): Promise<AnalyzeOutput> {
   return await withSpan(
     'analysis.pipeline',
     {
-      'analysis.moxfield_url': input.moxfieldUrl,
+      'analysis.deck_url': input.deckUrl,
       'analysis.keep_top': input.keepTop ?? 50,
       'analysis.cut_top': input.cutTop ?? 50,
       'analysis.add_top': input.addTop ?? 50
@@ -47,14 +47,15 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
       const headless = input.headless ?? true;
       input.onProgress?.({
         stage: 'moxfield',
-        message: 'Fetching Moxfield deck...',
+        message: 'Fetching input deck...',
         percentHint: 5
       });
-      const moxfieldDeck = await withSpan(
-        'moxfield.fetch_deck',
-        { 'moxfield.url': input.moxfieldUrl, 'moxfield.headless': headless },
-        () => fetchMoxfieldDeck(input.moxfieldUrl, { headless })
+      const inputDeck = await withSpan(
+        'deck.fetch_input',
+        { 'deck.url': input.deckUrl, 'deck.headless': headless },
+        () => fetchInputDeckFromUrl(input.deckUrl, { headless })
       );
+      pipelineSpan.setAttribute('deck.source', inputDeck.source);
 
       const mtgtop8 = new MtgTop8Client(25_000, input.delaySeconds ?? 0.2);
       input.onProgress?.({
@@ -64,15 +65,15 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
       });
       const commanderEntry = await withSpan(
         'mtgtop8.find_commander',
-        { 'commander.query_count': moxfieldDeck.commanders.length },
-        () => mtgtop8.findCommanderEntry(moxfieldDeck.commanders)
+        { 'commander.query_count': inputDeck.commanders.length },
+        () => mtgtop8.findCommanderEntry(inputDeck.commanders)
       );
       const commanderSlug = slugify(commanderEntry.name);
       pipelineSpan.setAttribute('commander.slug', commanderSlug);
       pipelineSpan.setAttribute('commander.name', commanderEntry.name);
 
       const commanderInfo = {
-        moxfieldCommanderQuery: moxfieldDeck.commanders.join(' / '),
+        moxfieldCommanderQuery: inputDeck.commanders.join(' / '),
         name: commanderEntry.name,
         score: commanderEntry.score,
         url: commanderEntry.url,
@@ -144,7 +145,7 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
           'analysis.inserted_decks': insertedDeckRows
         },
         () =>
-          analyzeCards(moxfieldDeck, cachedDecks, {
+          analyzeCards(inputDeck, cachedDecks, {
             startDate: input.startDate,
             endDate: input.endDate,
             keepTop: input.keepTop,
@@ -161,7 +162,7 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
       });
 
       return {
-        moxfieldDeck,
+        moxfieldDeck: inputDeck,
         commander: commanderInfo,
         analyzedAt: new Date().toISOString(),
         analysis,
@@ -174,6 +175,36 @@ export async function analyzeFromMoxfieldUrl(input: AnalyzePipelineInput): Promi
       };
     }
   );
+}
+
+export async function analyzeFromMoxfieldUrl(input: {
+  moxfieldUrl: string;
+  startDate?: Date | null;
+  endDate?: Date | null;
+  keepTop?: number;
+  cutTop?: number;
+  addTop?: number;
+  refreshCache?: boolean;
+  headless?: boolean;
+  maxPages?: number;
+  delaySeconds?: number;
+  mtgtop8DeckFetchConcurrency?: number;
+  onProgress?: (event: AnalyzePipelineProgressEvent) => void;
+}): Promise<AnalyzeOutput> {
+  return await analyzeFromDeckUrl({
+    deckUrl: input.moxfieldUrl,
+    startDate: input.startDate,
+    endDate: input.endDate,
+    keepTop: input.keepTop,
+    cutTop: input.cutTop,
+    addTop: input.addTop,
+    refreshCache: input.refreshCache,
+    headless: input.headless,
+    maxPages: input.maxPages,
+    delaySeconds: input.delaySeconds,
+    mtgtop8DeckFetchConcurrency: input.mtgtop8DeckFetchConcurrency,
+    onProgress: input.onProgress
+  });
 }
 
 function resolveMtgTop8DeckFetchConcurrency(override?: number): number {

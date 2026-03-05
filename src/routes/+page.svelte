@@ -26,6 +26,7 @@
             url: string;
           };
           moxfieldDeck: {
+            source: "moxfield" | "archidekt";
             name: string;
             deckId: string;
             commanders: string[];
@@ -539,10 +540,14 @@
 
   function compactStageLabel(stage: ProgressStageItem): string {
     if (stage.key === "queued") return "Queued";
-    if (stage.key === "moxfield") return "Moxfield";
+    if (stage.key === "moxfield") return "Decklist";
     if (stage.key === "commander") return "Commander";
     if (stage.key === "mtgtop8") return "MtgTop8";
     return "Analysis";
+  }
+
+  function deckSourceLabel(source: string | undefined): string {
+    return source === "archidekt" ? "Archidekt" : "Moxfield";
   }
 
   function createProgressId(): string {
@@ -649,14 +654,14 @@
     <div class="hero-head">
       <h1>MtG DC Meta Atelier</h1>
       <p class="subtitle">
-        Analyze your Moxfield deck against live Duel Commander trends from
+        Analyze your deck against live Duel Commander trends from
         MtgTop8!
       </p>
     </div>
 
     <form method="POST" class="form" use:enhance={enhanceSubmit}>
       <label class="field full">
-        <span>Moxfield deck URL</span>
+        <span>Deck URL (Moxfield or Archidekt)</span>
         <input
           name="moxfieldUrl"
           type="text"
@@ -665,7 +670,7 @@
           autocorrect="off"
           spellcheck="false"
           required
-          placeholder="https://www.moxfield.com/decks/..."
+          placeholder="https://www.moxfield.com/decks/... or https://archidekt.com/decks/..."
           value={values.moxfieldUrl}
         />
       </label>
@@ -743,7 +748,7 @@
         <article>
           <p class="k">Deck</p>
           <p class="v">{output.moxfieldDeck.name}</p>
-          <p class="sub">{output.moxfieldDeck.deckId}</p>
+          <p class="sub">{deckSourceLabel(output.moxfieldDeck.source)} · {output.moxfieldDeck.deckId}</p>
         </article>
         <article>
           <p class="k">Commander</p>

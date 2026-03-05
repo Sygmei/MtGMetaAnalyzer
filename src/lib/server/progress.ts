@@ -8,7 +8,7 @@ export interface ProgressStageItem {
 
 const DEFAULT_PROGRESS_STAGES: ProgressStageItem[] = [
   { key: 'queued', label: 'Queued' },
-  { key: 'moxfield', label: 'Gathering Moxfield decklist' },
+  { key: 'moxfield', label: 'Gathering decklist' },
   { key: 'commander', label: 'Finding Commander on MtGTop8' },
   { key: 'mtgtop8', label: 'Gathering MtGTop8 decklists' },
   { key: 'analysis', label: 'Analysis' }

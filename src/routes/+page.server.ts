@@ -3,11 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { fail } from '@sveltejs/kit';
 
 import { saveAnalysisRun } from '$lib/server/analysis-runs-repo';
+import { normalizeSupportedDeckUrl } from '$lib/server/deck-source';
 import { isAppError } from '$lib/server/app-error';
-import { normalizeMoxfieldDeckUrl } from '$lib/server/moxfield';
 import { getTraceId, withSpan } from '$lib/server/otel';
 import { completeProgress, failProgress, initProgress, updateProgress } from '$lib/server/progress';
-import { analyzeFromMoxfieldUrl } from '$lib/server/pipeline';
+import { analyzeFromDeckUrl } from '$lib/server/pipeline';
 import { parseDate } from '$lib/server/utils';
 
 import type { Actions } from './$types';
@@ -43,22 +43,23 @@ export const actions: Actions = {
 
     if (!values.moxfieldUrl) {
       if (progressId) {
-        await failProgress(progressId, 'Moxfield URL is required');
+        await failProgress(progressId, 'Deck URL is required');
       }
       return fail(400, {
-        error: 'Moxfield URL is required',
+        error: 'Deck URL is required',
         traceId: requestTraceId,
         values: { ...DEFAULT_VALUES, ...values }
       });
     }
     let normalizedMoxfieldUrl = '';
     try {
-      normalizedMoxfieldUrl = normalizeMoxfieldDeckUrl(values.moxfieldUrl);
-      values.moxfieldUrl = normalizedMoxfieldUrl;
+      const normalized = normalizeSupportedDeckUrl(values.moxfieldUrl);
+      normalizedMoxfieldUrl = normalized.normalizedUrl;
+      values.moxfieldUrl = normalized.normalizedUrl;
     } catch (error) {
       const appError = isAppError(error) ? error : null;
       const status = appError?.httpStatusCode ?? 400;
-      const userError = appError?.userFacingError ?? 'Invalid Moxfield URL. Use moxfield.com/decks/<id>';
+      const userError = appError?.userFacingError ?? 'Invalid deck URL. Use moxfield.com/decks/<id> or archidekt.com/decks/<id>.';
       if (progressId) {
         await failProgress(progressId, userError);
       }
@@ -126,14 +127,14 @@ export const actions: Actions = {
         'analysis.execute',
         {
           'analysis.client_ip': clientIp,
-          'analysis.moxfield_url': normalizedMoxfieldUrl
+          'analysis.deck_url': normalizedMoxfieldUrl
         },
         (span) => {
           analysisTraceId = getTraceId(span);
-          console.info(`[analysis] start trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl}`);
+          console.info(`[analysis] start trace_id=${analysisTraceId} ip=${clientIp} deckUrl=${normalizedMoxfieldUrl}`);
 
-          return analyzeFromMoxfieldUrl({
-            moxfieldUrl: normalizedMoxfieldUrl,
+          return analyzeFromDeckUrl({
+            deckUrl: normalizedMoxfieldUrl,
             startDate,
             endDate,
             keepTop,
@@ -199,7 +200,7 @@ export const actions: Actions = {
         await completeProgress(progressId);
       }
       console.info(
-        `[analysis] success trace_id=${analysisTraceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
+        `[analysis] success trace_id=${analysisTraceId} ip=${clientIp} deckUrl=${normalizedMoxfieldUrl} shareId=${shareId} totalDecks=${output.analysis.totalDecksConsidered}`
       );
 
       return {
@@ -213,7 +214,7 @@ export const actions: Actions = {
       const userError = appError?.userFacingError ?? null;
       const errorType = appError?.errorTypeName ?? 'UnhandledAnalysisError';
       console.error(
-        `[analysis] failed trace_id=${traceId} ip=${clientIp} moxfieldUrl=${normalizedMoxfieldUrl || values.moxfieldUrl} status=${status} type=${errorType} admin_error=${appError?.adminFacingError || getErrorMessage(error)}`,
+        `[analysis] failed trace_id=${traceId} ip=${clientIp} deckUrl=${normalizedMoxfieldUrl || values.moxfieldUrl} status=${status} type=${errorType} admin_error=${appError?.adminFacingError || getErrorMessage(error)}`,
         error
       );
       if (progressId) {

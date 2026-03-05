@@ -187,6 +187,7 @@ export async function fetchMoxfieldDeck(
 
   const cards = extractCards(getMainboardPayload(payload));
   const normalizedDeck = await normalizeMoxfieldDeckNames({
+    source: 'moxfield',
     deckId,
     name: String(payload.name || deckId),
     url: normalizedMoxfieldUrl,
