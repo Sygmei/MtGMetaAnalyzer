@@ -233,10 +233,13 @@ async function fetchMoxfieldDeckWithPlaywrightAttempt(args: {
 
     page.on('response', async (response: any) => {
       const url = response.url().toLowerCase();
-      if (!url.includes('/decks/all/') || !url.includes('moxfield.com')) {
+      if (!url.includes('moxfield.com')) {
         return;
       }
       if (response.status() !== 200) {
+        return;
+      }
+      if (/\.(?:avif|css|gif|ico|jpe?g|js|map|png|svg|webp|woff2?)(?:[?#].*)?$/i.test(url)) {
         return;
       }
       try {
@@ -310,8 +313,16 @@ async function fetchMoxfieldDeckWithPlaywrightAttempt(args: {
       hasNetworkPayload: () => Boolean(networkPayload)
     });
     if (!hasEarlySignal) {
+      const signalState = await inspectMoxfieldPageSignals(page);
       const screenshot = await capturePlaywrightFailureScreenshot(page, args.deckId);
-      const error = `No Moxfield data signal within ${earlySignalTimeoutMs}ms`;
+      const error = [
+        `No Moxfield data signal within ${earlySignalTimeoutMs}ms`,
+        `title=${signalState.title || 'unknown'}`,
+        `card_links=${signalState.cardLinkCount}`,
+        `next_data=${signalState.hasNextData}`,
+        `deck_script=${signalState.hasDeckLikeScript}`,
+        `cloudflare_blocked=${signalState.hasCloudflareBlock}`
+      ].join(' | ');
       attachPlaywrightFailureToTrace({
         deckId: args.deckId,
         deckUrl: args.deckUrl,
@@ -327,6 +338,11 @@ async function fetchMoxfieldDeckWithPlaywrightAttempt(args: {
           `No Moxfield data signal detected after navigation for ${args.deckUrl}`,
           `attempt=${args.attempt}/${args.maxAttempts}`,
           `timeout_ms=${earlySignalTimeoutMs}`,
+          `title=${signalState.title || 'unknown'}`,
+          `card_links=${signalState.cardLinkCount}`,
+          `next_data=${signalState.hasNextData}`,
+          `deck_script=${signalState.hasDeckLikeScript}`,
+          `cloudflare_blocked=${signalState.hasCloudflareBlock}`,
           screenshot?.objectUrl ? `screenshot_object_url=${screenshot.objectUrl}` : 'screenshot_object_url=unavailable'
         ].join(' | '),
         errorTypeName: 'MoxfieldEarlySignalTimeoutError',
@@ -443,18 +459,64 @@ async function waitForEarlyMoxfieldSignal(args: {
     if (args.hasNetworkPayload()) {
       return true;
     }
-    const hasNextData = await args.page
-      .evaluate(() => {
-        const script = document.querySelector('script#__NEXT_DATA__');
-        return Boolean(script && script.textContent && script.textContent.trim().length > 0);
-      })
-      .catch(() => false);
-    if (hasNextData) {
+    const signalState = await inspectMoxfieldPageSignals(args.page);
+    if (signalState.hasDeckDataSignal) {
       return true;
     }
     await delay(200);
   }
-  return args.hasNetworkPayload();
+  if (args.hasNetworkPayload()) {
+    return true;
+  }
+  const signalState = await inspectMoxfieldPageSignals(args.page);
+  return signalState.hasDeckDataSignal;
+}
+
+async function inspectMoxfieldPageSignals(page: any): Promise<{
+  hasDeckDataSignal: boolean;
+  hasNextData: boolean;
+  hasDeckLikeScript: boolean;
+  cardLinkCount: number;
+  title: string;
+  hasCloudflareBlock: boolean;
+}> {
+  return await page
+    .evaluate(() => {
+      const scripts = Array.from(document.querySelectorAll('script'));
+      const hasNextData = scripts.some((script) => {
+        return script.id === '__NEXT_DATA__' && Boolean(script.textContent?.trim());
+      });
+      const hasDeckLikeScript = scripts.some((script) => {
+        const text = script.textContent?.trim() || '';
+        if (!text) {
+          return false;
+        }
+        return /"(?:mainboard|mainBoard|boards|commanders|publicId)"\s*:/.test(text) && /"name"\s*:/.test(text);
+      });
+      const cardLinkCount =
+        document.querySelectorAll('article a[href^="/cards/"], main a[href^="/cards/"]').length ||
+        document.querySelectorAll('a[href^="/cards/"]').length;
+      const title = document.title.trim();
+      const pageText = [title, document.body?.innerText || ''].join(' ').replace(/\s+/g, ' ').trim();
+      const hasCloudflareBlock = /attention required|sorry, you have been blocked|cloudflare/i.test(pageText);
+
+      return {
+        hasDeckDataSignal: hasNextData || hasDeckLikeScript || cardLinkCount > 0,
+        hasNextData,
+        hasDeckLikeScript,
+        cardLinkCount,
+        title,
+        hasCloudflareBlock
+      };
+    })
+    .catch(() => ({
+      hasDeckDataSignal: false,
+      hasNextData: false,
+      hasDeckLikeScript: false,
+      cardLinkCount: 0,
+      title: '',
+      hasCloudflareBlock: false
+    }));
 }
 
 async function delay(ms: number): Promise<void> {
