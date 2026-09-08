@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { enhance } from '$app/forms';
   import { t } from '$lib/i18n';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -77,7 +78,7 @@
           <form method="POST" action="?/createEvent" use:enhance class="t-stack">
             <label class="t-label">{$t('tournament.name')}<input class="t-input" name="name" required maxlength="120" /></label>
             <label class="t-label">{$t('tournament.eventDate')}<input class="t-input" name="eventDate" type="date" min={data.league.startsOn} max={data.league.endsOn} required /></label>
-            <div><button type="submit" class="t-button">{$t('tournament.createEvent')}</button></div>
+            <div><button type="submit" class="t-button"><Icon name="plus" />{$t('tournament.createEvent')}</button></div>
           </form>
         </section>
         <section class="t-panel t-stack">
@@ -88,14 +89,14 @@
                 {#each availableAccounts as account}<option value={account.id}>{account.name} (@{account.username})</option>{/each}
               </select>
             </label>
-            <div><button class="t-button" type="submit" disabled={!availableAccounts.length}>{$t('tournament.addPlayer')}</button></div>
+            <div><button class="t-button" type="submit" disabled={!availableAccounts.length}><Icon name="plus" />{$t('tournament.addPlayer')}</button></div>
           </form>
           <p class="t-muted">{$t('tournament.preserveResults')}</p>
           <ul class="t-stack">{#each data.roster.filter((member) => member.active && member.userId) as member}
             <li class="t-row t-between"><span class="break-words min-w-0">{member.name}</span>
               <form method="POST" action="?/removeMember" use:enhance>
                 <input type="hidden" name="memberId" value={member.id} />
-                <button type="submit" class="t-button t-button-secondary text-sm" aria-label={`${$t('tournament.removePlayer')} ${member.name}`}>{$t('tournament.removePlayer')}</button>
+                <button type="submit" class="ui-icon-button ui-icon-danger" aria-label={`${$t('tournament.removePlayer')} ${member.name}`} title={$t('tournament.removePlayer')}><Icon name="trash" /></button>
               </form>
             </li>
           {/each}</ul>
@@ -112,7 +113,7 @@
           <label class="t-label">{$t('tournament.endDate')}<input class="t-input" name="endsOn" type="date" value={data.league.endsOn} required /></label>
         </div>
         <label class="t-row text-sm"><input name="archived" type="checkbox" checked={data.league.archived} />{$t('tournament.archiveLeague')}</label>
-        <div><button class="t-button" type="submit">{$t('tournament.save')}</button></div>
+        <div><button class="t-button" type="submit"><Icon name="save" />{$t('tournament.save')}</button></div>
       </form>
     </details>
   {/if}

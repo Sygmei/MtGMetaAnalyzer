@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import PageHeader from "$lib/components/PageHeader.svelte";
 
   export let data: {
@@ -22,11 +23,7 @@
 
   const pageClass = "mx-auto grid w-[min(900px,94vw)] gap-4 py-4 pb-12";
   const navClass = "flex flex-wrap items-center gap-3 text-sm";
-  const panelClass = "rounded border border-white/10 bg-stone-900/80 p-4";
-  const buttonClass =
-    "rounded bg-primary-300 px-4 py-2 font-bold text-stone-950 disabled:opacity-50";
-  const ghostButtonClass =
-    "rounded border border-white/15 bg-transparent px-4 py-2 font-bold text-stone-100";
+  const panelClass = "ui-panel";
   const inputClass =
     "w-full rounded border border-white/15 bg-stone-950 px-3 py-2 text-stone-100";
   const eyebrowClass =
@@ -41,16 +38,13 @@
   <PageHeader
     title={data.currentUser.displayName || data.currentUser.username}
     subtitle={`@${data.currentUser.username} - ${data.currentUser.role}`}
-    tone="amber"
   >
     <div slot="actions" class="flex flex-wrap items-center gap-3">
       <form method="POST" action="?/loginLink">
-        <button class={buttonClass} type="submit"
-          >Login on another device</button
-        >
+        <button class="ui-icon-button" type="submit" aria-label="Login on another device" title="Login on another device"><Icon name="qr" /></button>
       </form>
       <form method="POST" action="/logout">
-        <button class={ghostButtonClass} type="submit">Sign out</button>
+        <button class="ui-icon-button" type="submit" aria-label="Sign out" title="Sign out"><Icon name="logout" /></button>
       </form>
     </div>
   </PageHeader>
@@ -104,7 +98,7 @@
           value={data.currentUser.displayName || ""}
         />
       </label>
-      <button class={buttonClass} type="submit">Save account</button>
+      <button class="ui-icon-button ui-icon-primary" type="submit" aria-label="Save account" title="Save account"><Icon name="save" /></button>
     </form>
   </section>
 </main>

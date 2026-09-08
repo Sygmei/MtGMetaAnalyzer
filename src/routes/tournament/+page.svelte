@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { enhance } from '$app/forms';
   import { t } from '$lib/i18n';
   import PageHeader from '$lib/components/PageHeader.svelte';
@@ -42,7 +43,7 @@
           <label class="t-label">{$t('tournament.startDate')}<input class="t-input" name="startsOn" type="date" required /></label>
           <label class="t-label">{$t('tournament.endDate')}<input class="t-input" name="endsOn" type="date" required /></label>
         </div>
-        <div><button class="t-button" type="submit">{$t('tournament.createLeague')}</button></div>
+        <div><button class="t-button" type="submit"><Icon name="plus" />{$t('tournament.createLeague')}</button></div>
       </form>
     </details>
   {/if}

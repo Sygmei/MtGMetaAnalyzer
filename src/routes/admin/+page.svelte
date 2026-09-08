@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { enhance } from "$app/forms";
   import PageHeader from "$lib/components/PageHeader.svelte";
 
@@ -78,13 +79,11 @@
   };
 
   const pageClass = "mx-auto grid w-[min(1100px,94vw)] gap-4 py-4 pb-12";
-  const panelClass = "rounded border border-white/10 bg-stone-900/80 p-4";
+  const panelClass = "ui-panel";
   const inputClass =
     "w-full rounded border border-white/15 bg-stone-950 px-3 py-2 text-stone-100";
   const buttonClass =
     "h-10 rounded bg-primary-300 px-4 py-2 font-bold text-stone-950 disabled:opacity-50";
-  const dangerButtonClass =
-    "h-10 rounded bg-red-300 px-4 py-2 font-bold text-stone-950";
   const ghostButtonClass =
     "h-10 rounded border border-white/15 bg-transparent px-4 py-2 font-bold text-stone-100";
   const eyebrowClass =
@@ -253,10 +252,9 @@
   <PageHeader
     title="User accounts"
     subtitle="Create, invite, and manage user records."
-    tone="amber"
   >
     <form slot="actions" method="POST" action="/logout">
-      <button class={ghostButtonClass} type="submit">Sign out</button>
+      <button class="ui-icon-button" type="submit" aria-label="Sign out" title="Sign out"><Icon name="logout" /></button>
     </form>
   </PageHeader>
 
@@ -333,19 +331,19 @@
           </div>
           <div class="flex items-center gap-2">
             <button
-              class={ghostButtonClass}
+              class="ui-icon-button" aria-label={`Manage ${user.displayName || user.username}`} title="Manage user"
               type="button"
-              on:click={() => openManageUser(user.id)}>Manage</button
+              on:click={() => openManageUser(user.id)}><Icon name="settings" /></button
             >
             <button
-              class={buttonClass}
+              class="ui-icon-button" aria-label={`Login QR for ${user.displayName || user.username}`} title="Login QR"
               type="button"
-              on:click={() => openLoginLinkModal(user.id)}>QR</button
+              on:click={() => openLoginLinkModal(user.id)}><Icon name="qr" /></button
             >
             {#if user.id !== data.currentUser.id && user.role !== "superadmin"}
               <form method="POST" action="?/deleteUser">
                 <input type="hidden" name="userId" value={String(user.id)} />
-                <button class={dangerButtonClass} type="submit">Delete</button>
+                <button class="ui-icon-button ui-icon-danger" type="submit" aria-label={`Delete ${user.displayName || user.username}`} title="Delete user"><Icon name="trash" /></button>
               </form>
             {/if}
           </div>
@@ -400,7 +398,7 @@
               type="button"
               on:click={closeLoginLinkModal}>Cancel</button
             >
-            <button class={buttonClass} type="submit">Generate QR</button>
+            <button class={`${buttonClass} ui-action`} type="submit"><Icon name="qr" />Generate QR</button>
           </div>
         </form>
       </section>
@@ -432,9 +430,9 @@
           />
           <div>
             <button
-              class={ghostButtonClass}
+              class="ui-icon-button" aria-label="Close" title="Close"
               type="button"
-              on:click={dismissGeneratedLink}>Close</button
+              on:click={dismissGeneratedLink}><Icon name="close" /></button
             >
           </div>
         </div>
@@ -481,7 +479,7 @@
               <p class={eyebrowClass}>{activeManagedSection}</p>
               <h2 class="text-2xl font-black">{managed.user.displayName || managed.user.username}</h2>
             </div>
-            <button class={ghostButtonClass} type="button" on:click={closeManageUser}>Close</button>
+            <button class="ui-icon-button" type="button" on:click={closeManageUser} aria-label="Close" title="Close"><Icon name="close" /></button>
           </div>
 
           {#if managedError}
@@ -567,7 +565,7 @@
                       <strong class="truncate">{list.label || list.url}</strong>
                       <span class="truncate text-sm text-stone-400">{kindLabel(list.kind)} - {list.url}</span>
                     </a>
-                    <button class={dangerButtonClass} type="button" on:click={() => deleteManagedList(list.id)}>Delete</button>
+                    <button class="ui-icon-button ui-icon-danger" type="button" on:click={() => deleteManagedList(list.id)} aria-label={`Delete ${list.label || list.url}`} title="Delete list"><Icon name="trash" /></button>
                   </article>
                 {/each}
               </div>
@@ -579,7 +577,7 @@
       {:catch error}
         <div class="grid gap-4 p-5">
           <p class="text-red-200">{error instanceof Error ? error.message : "Could not load user."}</p>
-          <button class={ghostButtonClass} type="button" on:click={closeManageUser}>Close</button>
+          <button class="ui-icon-button" type="button" on:click={closeManageUser} aria-label="Close" title="Close"><Icon name="close" /></button>
         </div>
       {/await}
     </section>

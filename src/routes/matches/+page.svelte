@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { enhance } from "$app/forms";
   import { onMount } from "svelte";
 
@@ -134,15 +135,13 @@
   }
 
   const pageClass = "mx-auto grid w-[min(1180px,94vw)] gap-4 py-4 pb-12";
-  const panelClass = "rounded border border-white/10 bg-stone-900/80 p-4";
+  const panelClass = "ui-panel";
   const inputClass =
-    "w-full rounded border border-white/15 bg-stone-950 px-3 py-2 text-stone-100 placeholder:text-stone-600";
+    "ui-input";
   const buttonClass =
-    "rounded bg-primary-300 px-4 py-2.5 font-black text-stone-950 disabled:opacity-50";
-  const dangerButtonClass =
-    "rounded bg-red-300 px-3 py-2 text-sm font-bold text-stone-950";
+    "ui-button";
   const eyebrowClass =
-    "text-xs font-extrabold uppercase tracking-widest text-primary-300";
+    "text-sm font-medium text-stone-400";
   const tableCellClass =
     "border-b border-white/10 px-3 py-2 text-left align-top";
   const skeletonBlockClass = "animate-pulse rounded bg-stone-950/80";
@@ -162,14 +161,9 @@
     {#await savedListsPromise}
       <div class="flex flex-wrap items-center gap-3">
         <button class={buttonClass} type="button" disabled>
-          {$t("matcher.findPeople")}
+          <Icon name="search" /> {$t("matcher.findPeople")}
         </button>
-        <a
-          class="rounded border border-white/15 bg-transparent px-4 py-2.5 font-bold text-stone-100 no-underline hover:border-primary-300/50"
-          href="/matches/users"
-        >
-          {$t("matcher.viewAllUsers")}
-        </a>
+        <a class="ui-icon-button" href="/matches/users" aria-label={$t("matcher.viewAllUsers")} title={$t("matcher.viewAllUsers")}><Icon name="users" /></a>
       </div>
     {:then savedLists}
       {@const savedBuyerCount = savedLists.filter(
@@ -185,15 +179,10 @@
             type="submit"
             disabled={isSubmitting || (!savedBuyerCount && !savedSellerCount)}
           >
-            {isSubmitting ? $t("matcher.finding") : $t("matcher.findPeople")}
+            <Icon name={isSubmitting ? "loader" : "search"} /> {isSubmitting ? $t("matcher.finding") : $t("matcher.findPeople")}
           </button>
         </form>
-        <a
-          class="rounded border border-white/15 bg-transparent px-4 py-2.5 font-bold text-stone-100 no-underline hover:border-primary-300/50"
-          href="/matches/users"
-        >
-          {$t("matcher.viewAllUsers")}
-        </a>
+        <a class="ui-icon-button" href="/matches/users" aria-label={$t("matcher.viewAllUsers")} title={$t("matcher.viewAllUsers")}><Icon name="users" /></a>
       </div>
     {:catch}
       <p class="text-sm text-red-200">
@@ -202,19 +191,13 @@
     {/await}
   {:else}
     <div class="flex flex-wrap items-center gap-3">
-      <a
-        class="rounded border border-white/15 bg-transparent px-4 py-2.5 font-bold text-stone-100 no-underline hover:border-primary-300/50"
-        href="/matches/users"
-      >
-        {$t("matcher.viewAllUsers")}
-      </a>
+      <a class="ui-icon-button" href="/matches/users" aria-label={$t("matcher.viewAllUsers")} title={$t("matcher.viewAllUsers")}><Icon name="users" /></a>
     </div>
   {/if}
 
   <section class={`${panelClass} grid gap-4`} id="lists">
     <div class="flex flex-wrap items-start justify-between gap-3">
       <div>
-        <p class={eyebrowClass}>{$t("matcher.savedLists")}</p>
         <h2 class="mt-1 text-xl font-bold">{$t("matcher.addList")}</h2>
       </div>
     </div>
@@ -243,7 +226,7 @@
           required
         />
       </label>
-      <button class={buttonClass} type="submit">{$t("matcher.add")}</button>
+      <button class="ui-icon-button ui-icon-primary" type="submit" aria-label={$t("matcher.add")} title={$t("matcher.add")}><Icon name="plus" /></button>
     </form>
   </section>
 
@@ -392,7 +375,7 @@
               type="submit"
               disabled={isSubmitting || adminUsers.length < 2}
             >
-              {isSubmitting ? $t("matcher.finding") : $t("matcher.computeSelectedPeople")}
+              <Icon name={isSubmitting ? "loader" : "search"} /> {isSubmitting ? $t("matcher.finding") : $t("matcher.computeSelectedPeople")}
             </button>
           </div>
         </form>
@@ -497,7 +480,7 @@
         </a>
         <form method="POST" action="?/deleteList">
           <input type="hidden" name="listId" value={list.id} />
-          <button class={dangerButtonClass} type="submit">{$t("matcher.delete")}</button>
+          <button class="ui-icon-button ui-icon-danger" type="submit" aria-label={`${$t("matcher.delete")}: ${list.label || list.url}`} title={$t("matcher.delete")}><Icon name="trash" /></button>
         </form>
       </article>
     {/each}

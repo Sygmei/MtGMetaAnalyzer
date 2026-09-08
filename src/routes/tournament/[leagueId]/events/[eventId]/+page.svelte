@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { enhance } from '$app/forms';
   import { t } from '$lib/i18n';
   import { scorePlacements } from '$lib/tournament';
@@ -89,8 +90,8 @@
             <label class="t-label">{$t('tournament.reason')}<textarea class="t-input" name="reason" rows="2" maxlength="1000" required></textarea></label>
           {/if}
           <div class="t-row">
-            <button class="t-button" type="submit" name="status" value="published" disabled={saving || !preview || participantCount < 2}>{$t(saving ? 'tournament.saving' : data.event.status === 'published' ? 'tournament.saveCorrections' : 'tournament.publish')}</button>
-            <button class="t-button t-button-secondary" type="submit" name="status" value="draft" disabled={saving || !preview}>{$t(data.event.status === 'published' ? 'tournament.unpublish' : 'tournament.saveDraft')}</button>
+            <button class="t-button" type="submit" name="status" value="published" disabled={saving || !preview || participantCount < 2}><Icon name={saving ? "loader" : "publish"} />{$t(saving ? 'tournament.saving' : data.event.status === 'published' ? 'tournament.saveCorrections' : 'tournament.publish')}</button>
+            <button class="t-button t-button-secondary" type="submit" name="status" value="draft" disabled={saving || !preview}><Icon name="save" />{$t(data.event.status === 'published' ? 'tournament.unpublish' : 'tournament.saveDraft')}</button>
           </div>
         </section>
       </form>

@@ -1,58 +1,45 @@
 <script lang="ts">
   import { currentUser } from "$lib/current-user";
   import PageHeader from "$lib/components/PageHeader.svelte";
-  import { t } from "$lib/i18n";
+  import { t, type TranslationKey } from "$lib/i18n";
 
-  const cardClass =
-    "rounded border border-white/10 bg-stone-900/80 p-5 text-stone-100 no-underline transition hover:border-primary-300/50 hover:bg-stone-900";
-  const eyebrowClass =
-    "text-xs font-extrabold uppercase tracking-widest text-primary-300";
+  const tools: { href: string; title: TranslationKey; description: TranslationKey; membersOnly: boolean }[] = [
+    { href: "/analyzer", title: "nav.deckAnalyzer", description: "home.analyzerDescription", membersOnly: false },
+    { href: "/matches", title: "nav.matcher", description: "home.matcherDescription", membersOnly: true },
+    { href: "/tournament", title: "tournament.title", description: "tournament.homeDescription", membersOnly: true }
+  ];
 </script>
 
-<svelte:head>
-  <title>Karton</title>
-</svelte:head>
+<svelte:head><title>Karton</title></svelte:head>
 
-<main class="mx-auto grid w-[min(980px,94vw)] gap-5 py-8 pb-12">
+<main class="home-page">
   <PageHeader title={$t("home.title")} />
-
-  <section class="grid gap-4 md:grid-cols-2">
-    <a class={cardClass} href="/analyzer" data-sveltekit-preload-code="eager" data-sveltekit-preload-data="hover">
-      <p class={eyebrowClass}>Deck Analyzer</p>
-      <h2 class="mt-2 text-xl font-bold">{$t("home.analyzerTitle")}</h2>
-      <p class="mt-2 text-sm text-stone-400">
-        {$t("home.analyzerDescription")}
-      </p>
-    </a>
-
-    {#if $currentUser}
-      <a class={cardClass} href="/tournament" data-sveltekit-preload-code="eager" data-sveltekit-preload-data="hover">
-        <p class={eyebrowClass}>{$t("tournament.title")}</p>
-        <h2 class="mt-2 text-xl font-bold">{$t("tournament.homeTitle")}</h2>
-        <p class="mt-2 text-sm text-stone-400">{$t("tournament.homeDescription")}</p>
-      </a>
-      <a class={cardClass} href="/matches" data-sveltekit-preload-code="eager" data-sveltekit-preload-data="hover">
-        <p class={eyebrowClass}>Matcher</p>
-        <h2 class="mt-2 text-xl font-bold">{$t("home.matcherTitle")}</h2>
-        <p class="mt-2 text-sm text-stone-400">
-          {$t("home.matcherDescription")}
-        </p>
-      </a>
-    {:else}
-      <article class={`${cardClass} opacity-60`}>
-        <div class="flex flex-wrap items-center gap-2">
-          <p class={eyebrowClass}>Matcher</p>
-          <span
-            class="rounded-full border border-amber-200/30 bg-amber-300/10 px-2 py-0.5 text-[0.68rem] font-bold uppercase tracking-wide text-amber-200"
-          >
-            {$t("home.registeredOnly")}
-          </span>
-        </div>
-        <h2 class="mt-2 text-xl font-bold">{$t("home.matcherTitle")}</h2>
-        <p class="mt-2 text-sm text-stone-400">
-          {$t("home.matcherDescription")}
-        </p>
-      </article>
-    {/if}
+  <section class="tool-list" aria-label={$t("home.title")}>
+    {#each tools as tool}
+      {#if !tool.membersOnly || $currentUser}
+        <a class="tool-row" href={tool.href} data-sveltekit-preload-code="eager" data-sveltekit-preload-data="hover">
+          <div><h2>{$t(tool.title)}</h2><p>{$t(tool.description)}</p></div>
+          <span class="arrow" aria-hidden="true">→</span>
+        </a>
+      {:else}
+        <article class="tool-row locked">
+          <div><h2>{$t(tool.title)}</h2><p>{$t(tool.description)}</p><span class="access-note">{$t("home.registeredOnly")}</span></div>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/></svg>
+        </article>
+      {/if}
+    {/each}
   </section>
 </main>
+
+<style>
+  .home-page { width: min(800px, calc(100% - 40px)); margin: auto; padding: 40px 0 64px; }
+  .tool-list { margin-top: 16px; border-top: 1px solid var(--border); }
+  .tool-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 26px 16px; border-bottom: 1px solid var(--border); color: var(--text); text-decoration: none; }
+  a.tool-row:hover { background: var(--surface); }
+  h2 { font-size: 16px; font-weight: 600; }
+  p { margin-top: 6px; color: var(--muted); font-size: 14px; line-height: 1.6; }
+  .arrow { font-size: 22px; color: var(--muted); }
+  .locked svg { flex-shrink: 0; color: var(--muted); }
+  .access-note { display: inline-block; margin-top: 10px; color: var(--muted); font-size: 12px; }
+  @media (max-width: 639px) { .home-page { width: calc(100% - 32px); padding-top: 24px; } .tool-row { padding: 22px 4px; gap: 16px; } }
+</style>

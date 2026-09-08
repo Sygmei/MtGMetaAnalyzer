@@ -1,149 +1,53 @@
 <script lang="ts">
-  import { afterNavigate, goto } from "$app/navigation";
+  import Icon, { type IconName } from "$lib/components/Icon.svelte";
   import { page } from "$app/stores";
-
   import { t, type TranslationKey } from "$lib/i18n";
   import UserMenu from "./UserMenu.svelte";
 
   export let currentUser:
-    | {
-        id?: string;
-        username?: string;
-        displayName?: string | null;
-        role?: string;
-      }
-    | null
-    | undefined = null;
+    | { id?: string; username?: string; displayName?: string | null; role?: string }
+    | null | undefined = null;
   export let userLoaded = false;
 
-  type NavItem = {
-    href: string;
-    label: TranslationKey;
-    kicker: TranslationKey;
-    match: (pathname: string) => boolean;
-  };
-
-  const navItems: NavItem[] = [
-    {
-      href: "/analyzer",
-      label: "nav.deckAnalyzer",
-      kicker: "nav.deckAnalyzerKicker",
-      match: (pathname) => pathname.startsWith("/analyzer") || pathname.startsWith("/analysis")
-    },
-    {
-      href: "/matches",
-      label: "nav.matcher",
-      kicker: "nav.matcherKicker",
-      match: (pathname) => pathname.startsWith("/matches")
-    },
-    {
-      href: "/tournament",
-      label: "tournament.title",
-      kicker: "tournament.kicker",
-      match: (pathname) => pathname.startsWith("/tournament")
-    }
+  const navItems: { href: string; label: TranslationKey; icon: IconName; match: (path: string) => boolean }[] = [
+    { href: "/analyzer", label: "nav.deckAnalyzer", icon: "scan", match: (path) => path.startsWith("/analyzer") || path.startsWith("/analysis") },
+    { href: "/matches", label: "nav.matcher", icon: "search", match: (path) => path.startsWith("/matches") },
+    { href: "/tournament", label: "tournament.title", icon: "trophy", match: (path) => path.startsWith("/tournament") }
   ];
-
-  let optimisticPath: string | null = null;
-
-  $: currentPath = $page.url.pathname;
-  $: if (optimisticPath && currentPath === optimisticPath) {
-    optimisticPath = null;
-  }
-  $: pathname = optimisticPath ?? currentPath;
-  $: visibleNavItems = currentUser || !userLoaded ? navItems : navItems.filter((item) => item.href === "/analyzer");
-
-  afterNavigate(() => {
-    optimisticPath = null;
-  });
-
-  function markNavigation(href: string): void {
-    if (href !== currentPath) {
-      optimisticPath = href;
-    }
-  }
-
-  function navigateOnPointerDown(event: PointerEvent, href: string): void {
-    if (
-      event.pointerType !== "mouse" ||
-      event.button !== 0 ||
-      event.altKey ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.shiftKey
-    ) {
-      return;
-    }
-
-    markNavigation(href);
-    if (href !== currentPath) {
-      void goto(href);
-    }
-  }
+  $: visibleNavItems = currentUser ? navItems : navItems.filter((item) => item.href === "/analyzer");
 </script>
 
-<header class="sticky top-0 z-50 grid grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 border-b border-primary-100/10 bg-[#0f1110] px-2 py-2 sm:px-5 sm:py-3 lg:grid-cols-[180px_minmax(0,1fr)_auto] lg:gap-3">
-  <a
-    class="flex min-w-0 select-none items-center gap-3 text-stone-100 no-underline"
-    href="/"
-    draggable="false"
-    data-sveltekit-preload-code="eager"
-    data-sveltekit-preload-data="hover"
-    aria-label="Karton home"
-  >
-    <img class="size-9 shrink-0 rounded border border-primary-100/20 bg-stone-950 object-contain p-1 sm:size-9" src="/icon.svg" alt="" aria-hidden="true" />
-    <span class="grid min-w-0">
-      <strong class="truncate text-sm leading-tight">Karton</strong>
-      <small class="truncate text-[0.68rem] uppercase text-stone-400">{$t("nav.mtgTools")}</small>
-    </span>
-  </a>
-
-  <nav class="col-span-2 row-start-2 sm:col-span-1 sm:row-start-auto grid min-w-0 grid-cols-[auto_repeat(3,minmax(0,1fr))] gap-1 sm:gap-2 lg:justify-self-center lg:w-[min(720px,100%)]" aria-label="Application sections">
-    <a
-      class={`grid h-10 min-w-10 select-none place-items-center rounded border px-2 text-center no-underline transition sm:min-h-[3.375rem] sm:min-w-11 sm:px-3 sm:py-2 ${pathname === "/" ? "border-primary-300 bg-primary-300 text-stone-950" : "border-primary-100/10 bg-stone-900 text-stone-400 hover:bg-stone-800 hover:text-stone-100"}`}
-      href="/"
-      draggable="false"
-      data-sveltekit-preload-code="eager"
-      data-sveltekit-preload-data="hover"
-      on:pointerdown={(event) => navigateOnPointerDown(event, "/")}
-      on:click={() => markNavigation("/")}
-      aria-label={$t("nav.home")}
-      aria-current={pathname === "/" ? "page" : undefined}
-      title={$t("nav.home")}
-    >
-      <svg class="size-4" viewBox="0 0 24 24" aria-hidden="true">
-        <path
-          d="M3 10.5 12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1v-10.5Z"
-          fill="none"
-          stroke="currentColor"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          stroke-width="2"
-        />
-      </svg>
+<header class="app-header">
+  <div class="header-inner">
+    <a class="brand" href="/" aria-label="Karton home" data-sveltekit-preload-data="hover">
+      <img src="/icon.svg" alt="" width="28" height="28" />
+      <span>Karton</span>
     </a>
-    {#each navItems as item}
-      <a
-        class={`grid h-10 min-w-0 select-none place-items-center rounded border px-1 text-center no-underline transition sm:min-h-[3.375rem] sm:px-3 sm:py-2 ${visibleNavItems.includes(item) ? "" : "invisible pointer-events-none"} ${item.match(pathname) ? "border-primary-300 bg-primary-300 text-stone-950" : "border-primary-100/10 bg-stone-900 text-stone-400 hover:bg-stone-800 hover:text-stone-100"}`}
-        href={item.href}
-        draggable="false"
-        data-sveltekit-preload-code="eager"
-        data-sveltekit-preload-data="hover"
-        on:pointerdown={(event) => navigateOnPointerDown(event, item.href)}
-        on:click={() => markNavigation(item.href)}
-        aria-current={item.match(pathname) ? "page" : undefined}
-        aria-hidden={!visibleNavItems.includes(item)}
-        tabindex={visibleNavItems.includes(item) ? undefined : -1}
-      >
-        <span class="block w-full min-w-0 whitespace-normal text-xs leading-tight font-extrabold sm:truncate sm:text-sm">{$t(item.label)}</span>
-        <small class="hidden w-full min-w-0 truncate text-[0.66rem] uppercase sm:block">{$t(item.kicker)}</small>
-      </a>
-    {/each}
-  </nav>
-
-  {#if currentUser}
-    <div class="col-start-2 row-start-1 sm:col-start-3 justify-self-end">
-      <UserMenu {currentUser} />
-    </div>
-  {/if}
+    <nav aria-label={$t("nav.sections")} aria-busy={!userLoaded}>
+      {#each visibleNavItems as item}
+        <a href={item.href} aria-label={$t(item.label)} title={$t(item.label)} aria-current={item.match($page.url.pathname) ? "page" : undefined}
+          data-sveltekit-preload-code="eager" data-sveltekit-preload-data="hover">
+          <Icon name={item.icon} size={16} /><span>{$t(item.label)}</span>
+        </a>
+      {/each}
+    </nav>
+    {#if currentUser}<UserMenu {currentUser} />{/if}
+  </div>
 </header>
+
+<style>
+  .app-header { position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border); background: var(--canvas); }
+  .header-inner { width: min(1200px, calc(100% - 40px)); min-height: 64px; margin: auto; display: flex; align-items: center; gap: 40px; }
+  .brand { display: flex; flex-shrink: 0; align-items: center; gap: 9px; color: var(--text); font-size: 16px; font-weight: 600; text-decoration: none; }
+  nav { display: flex; align-self: stretch; gap: 28px; flex: 1; min-width: 0; }
+  nav a { display: flex; gap: 7px; align-items: center; justify-content: center; border-bottom: 2px solid transparent; padding: 12px 0 10px; color: var(--muted); text-decoration: none; font-size: 14px; line-height: 1.4; text-align: center; }
+  nav a:hover { color: var(--text); }
+  nav a[aria-current="page"] { color: var(--text); border-color: var(--color-primary-300); }
+  @media (max-width: 639px) {
+    .header-inner { width: calc(100% - 32px); flex-wrap: wrap; gap: 0; padding-top: 12px; }
+    .brand { flex: 1; min-height: 36px; }
+    nav { order: 3; flex-basis: 100%; gap: 18px; }
+    nav a { flex: 1; min-height: 48px; }
+    nav a span { display: none; }
+  }
+</style>

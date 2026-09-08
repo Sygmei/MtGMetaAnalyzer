@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Icon from "$lib/components/Icon.svelte";
   import { enhance } from "$app/forms";
   import { goto } from "$app/navigation";
   import type { SubmitFunction } from "@sveltejs/kit";
@@ -679,23 +680,31 @@
     stopProgressSmoothing();
   });
 
+  function revealInvalidDate(event: Event): void {
+    const input = event.currentTarget as HTMLInputElement;
+    const details = input.closest("details");
+    if (details && !details.open) {
+      details.open = true;
+      requestAnimationFrame(() => input.focus());
+    }
+  }
+
   const pageClass = "mx-auto grid w-[min(1200px,94vw)] gap-4 py-4 pb-12";
-  const panelClass = "rounded border border-white/10 bg-stone-900/80 p-4";
-  const inputClass = "w-full rounded border border-white/15 bg-stone-950 px-3 py-2 text-stone-100 placeholder:text-stone-600";
+  const panelClass = "ui-panel";
+  const inputClass = "ui-input";
   const fieldClass = "grid gap-1";
   const labelTextClass = "text-sm font-semibold text-stone-300";
-  const buttonClass = "rounded bg-primary-300 px-4 py-2.5 font-black text-stone-950 disabled:opacity-50";
-  const eyebrowClass = "text-xs font-extrabold uppercase tracking-widest text-primary-300";
+  const eyebrowClass = "text-sm font-medium text-stone-400";
   const statLabelClass = "text-xs font-bold uppercase tracking-wider text-stone-400";
   const statValueClass = "mt-1 text-lg font-black text-stone-100";
   const skeletonBlockClass = "animate-pulse rounded bg-stone-950/80";
 </script>
 
 <svelte:head>
-  <title>Karton</title>
+  <title>{$t("analyzer.title")} - Karton</title>
 </svelte:head>
 
-<main class={pageClass}>
+<main class={`${pageClass} ${output ? "" : "analyzer-start"}`}>
   <PageHeader
     title={$t("analyzer.title")}
     subtitle={$t("analyzer.description")}
@@ -724,34 +733,42 @@
   {/if}
 
   <section class={`${panelClass} grid gap-5`}>
-    <form method="POST" class="grid gap-4" use:enhance={enhanceSubmit}>
-      <label class={fieldClass}>
-        <span class={labelTextClass}>Deck URL (Moxfield, Archidekt, or ManaBox)</span>
-        <input
-          class={inputClass}
-          name="moxfieldUrl"
-          type="text"
-          inputmode="url"
-          autocapitalize="off"
-          autocorrect="off"
-          spellcheck="false"
-          required
-          placeholder="https://www.moxfield.com/decks/... or https://manabox.app/decks/..."
-          value={values.moxfieldUrl}
-        />
-      </label>
-
-      <div class="grid gap-3 md:grid-cols-2">
-        <label class={fieldClass}>
-          <span class={labelTextClass}>{$t("analyzer.ignoreBefore")}</span>
-          <input class={inputClass} name="startDate" type="date" value={values.startDate} />
-        </label>
-
-        <label class={fieldClass}>
-          <span class={labelTextClass}>{$t("analyzer.ignoreAfter")}</span>
-          <input class={inputClass} name="endDate" type="date" value={values.endDate} />
-        </label>
+    <form method="POST" class="grid gap-5" use:enhance={enhanceSubmit} aria-busy={isSubmitting}>
+      <div class="grid gap-2">
+        <label class={labelTextClass} for="deck-url">{$t("analyzer.deckUrl")}</label>
+        <div class="flex items-start gap-2">
+          <input id="deck-url" class={inputClass} name="moxfieldUrl" type="text" inputmode="url"
+            autocapitalize="off" autocorrect="off" spellcheck="false" required
+            placeholder="https://www.moxfield.com/decks/…" aria-describedby="deck-sources" value={values.moxfieldUrl} />
+          <button class="ui-icon-button ui-icon-primary" type="submit" disabled={isSubmitting}
+            aria-label={isSubmitting ? $t("analyzer.analyzing") : $t("analyzer.submit")}
+            title={isSubmitting ? $t("analyzer.analyzing") : $t("analyzer.submit")}>
+            <Icon name={isSubmitting ? "loader" : "scan"} size={20} />
+          </button>
+        </div>
+        <span id="deck-sources" class="text-xs text-stone-400">{$t("analyzer.sources")}</span>
       </div>
+
+      <details class="date-filter" open={Boolean(values.startDate || values.endDate)}>
+        <summary>
+          <Icon name="calendar" size={16} /> {$t("analyzer.dateFilter")}
+          <span class="filter-chevron"><Icon name="chevron" size={14} /></span>
+          {#if values.startDate || values.endDate}
+            <span class="ml-2 text-xs">{values.startDate || "…"} – {values.endDate || "…"}</span>
+          {/if}
+        </summary>
+        <p class="mt-3 text-xs text-stone-400">{$t("analyzer.dateHelp")}</p>
+        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+          <label class={fieldClass}>
+            <span class={labelTextClass}>{$t("analyzer.ignoreBefore")}</span>
+            <input class={inputClass} name="startDate" type="date" bind:value={values.startDate} max={values.endDate || undefined} on:invalid={revealInvalidDate} />
+          </label>
+          <label class={fieldClass}>
+            <span class={labelTextClass}>{$t("analyzer.ignoreAfter")}</span>
+            <input class={inputClass} name="endDate" type="date" bind:value={values.endDate} min={values.startDate || undefined} on:invalid={revealInvalidDate} />
+          </label>
+        </div>
+      </details>
 
       {#if false}
         <div class="grid gap-3 md:grid-cols-3">
@@ -793,11 +810,10 @@
         </div>
       {/if}
 
-      <button class={buttonClass} type="submit">{$t("analyzer.submit")}</button>
     </form>
 
     {#if form?.error}
-      <p class="rounded border border-red-300/20 bg-red-950/30 p-3 text-red-200">{form.error}</p>
+      <p role="alert" class="rounded border border-red-300/20 bg-red-950/30 p-3 text-red-200">{form.error}</p>
     {/if}
     {#if form?.traceId}
       <p class="text-sm text-stone-400">Trace ID: <code class="rounded bg-stone-950 px-2 py-1 text-primary-300">{form.traceId}</code></p>
@@ -808,8 +824,7 @@
     <section class={`${panelClass} grid gap-4`}>
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p class={eyebrowClass}>{$t("analyzer.previousAnalyses")}</p>
-          <h2 class="text-xl font-bold">{$t("analyzer.savedFor", { name: $currentUser.displayName || $currentUser.username })}</h2>
+          <h2 class="text-base font-semibold">{$t("analyzer.previousAnalyses")}</h2>
         </div>
       </div>
       {#await previousAnalysesPromise}
@@ -824,8 +839,8 @@
           {/each}
         </div>
       {:then previousAnalyses}
-        <span class="w-fit rounded bg-stone-950 px-3 py-1 text-sm text-stone-300">{$t("analyzer.savedCount", { count: previousAnalyses.length })}</span>
         {#if previousAnalyses.length}
+          <span class="text-sm text-stone-400">{$t("analyzer.savedCount", { count: previousAnalyses.length })}</span>
           <div class="grid gap-2">
             {#each previousAnalyses as analysis}
               <a class="grid gap-1 rounded border border-white/10 bg-stone-950/60 p-3 text-stone-100 no-underline hover:border-primary-300/50" href={`/analysis/${analysis.shareId}`}>
@@ -840,6 +855,8 @@
               </a>
             {/each}
           </div>
+        {:else}
+          <p class="text-sm text-stone-400">{$t("analyzer.noSaved")}</p>
         {/if}
       {:catch}
         <p class="text-sm text-red-200">{$t("analyzer.loadPreviousFailed")}</p>
@@ -917,7 +934,7 @@
           on:pointerdown={(event) => activateAnalysisTabOnPointerDown(event, "cut")}
           on:click={() => (activeAnalysisTab = "cut")}
         >
-          Cut
+          <span class="ui-action"><Icon name="minus" />Cut</span>
         </button>
         <button
           class={analysisTabClass("add")}
@@ -927,7 +944,7 @@
           on:pointerdown={(event) => activateAnalysisTabOnPointerDown(event, "add")}
           on:click={() => (activeAnalysisTab = "add")}
         >
-          Add
+          <span class="ui-action"><Icon name="plus" />Add</span>
         </button>
         <button
           class={analysisTabClass("keep")}
@@ -937,7 +954,7 @@
           on:pointerdown={(event) => activateAnalysisTabOnPointerDown(event, "keep")}
           on:click={() => (activeAnalysisTab = "keep")}
         >
-          Keep
+          <span class="ui-action"><Icon name="check" />Keep</span>
         </button>
       </div>
 
@@ -960,3 +977,13 @@
     </section>
   {/if}
 </main>
+
+<style>
+  .analyzer-start { max-width: 800px; padding-top: 40px; }
+  .date-filter { border-top: 1px solid var(--border); padding-top: 16px; }
+  .date-filter summary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; list-style: none; width: fit-content; color: var(--muted); font-size: 14px; }
+  .date-filter summary::-webkit-details-marker { display: none; }
+  .date-filter[open] .filter-chevron { transform: rotate(180deg); }
+  .date-filter summary:hover { color: var(--text); }
+  @media (max-width: 639px) { .analyzer-start { width: calc(100% - 32px); padding-top: 24px; } }
+</style>

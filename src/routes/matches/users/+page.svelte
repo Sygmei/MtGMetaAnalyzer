@@ -74,8 +74,8 @@
   }
 
   const pageClass = "mx-auto grid w-[min(1180px,94vw)] gap-4 py-4 pb-12";
-  const panelClass = "rounded border border-white/10 bg-stone-900/80 p-4";
-  const inputClass = "w-full rounded border border-white/15 bg-stone-950 px-3 py-2 text-stone-100 placeholder:text-stone-600";
+  const panelClass = "ui-panel";
+  const inputClass = "ui-input";
   const skeletonBlockClass = "animate-pulse rounded bg-stone-950/80";
 </script>
 

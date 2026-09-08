@@ -83,31 +83,28 @@
 
 <svelte:head>
   <link rel="icon" href="/favicon.ico" sizes="any" />
-  <meta name="theme-color" content="#0f1110" />
+  <meta name="theme-color" content="#111212" />
 </svelte:head>
 
+<a class="skip-link" href="#page-content">{$t("nav.skipToContent")}</a>
 <AppHeader currentUser={$currentUser} userLoaded={currentUserLoaded} />
 
-<div
-  class={`transition-opacity duration-150 ${$navigating ? "opacity-40" : "opacity-100"}`}
-  aria-busy={$navigating ? "true" : undefined}
->
+<div id="page-content" tabindex="-1" aria-busy={$navigating ? "true" : undefined}>
   <slot />
 </div>
 
 {#if $navigating}
-  <div class="pointer-events-none fixed inset-0 z-40 bg-stone-950/35 backdrop-blur-[1px]" aria-hidden="true"></div>
-  <div class="pointer-events-none fixed inset-x-0 top-0 z-40 h-1 overflow-hidden bg-primary-300/10" aria-hidden="true">
-    <div class="route-loading-bar h-full w-1/3 rounded-r-full bg-primary-300 shadow-[0_0_20px_rgba(201,56,20,0.6)]"></div>
+  <div class="pointer-events-none fixed inset-x-0 top-0 z-[60] h-0.5 overflow-hidden" aria-hidden="true">
+    <div class="route-loading-bar h-full w-1/3 bg-primary-300"></div>
   </div>
-  <div class="pointer-events-none fixed inset-x-0 top-28 z-40 flex justify-center px-4 sm:top-20" role="status" aria-live="polite">
-    <div class="rounded border border-primary-300/40 bg-stone-950/95 px-4 py-2 text-sm font-bold text-primary-100 shadow-xl shadow-black/30">
-      Loading {$t(pendingRouteLabel)}...
-    </div>
-  </div>
+  <div class="sr-only" role="status">{$t("nav.loading", { page: $t(pendingRouteLabel) })}</div>
 {/if}
 
 <style>
+  .skip-link { position: fixed; top: 8px; left: 16px; z-index: 100; transform: translateY(-200%); border-radius: 4px; background: var(--text); color: var(--canvas); padding: 10px 16px; }
+  .skip-link:focus { transform: translateY(0); }
+  #page-content:focus { outline: none; }
+
   .route-loading-bar {
     animation: route-loading-slide 900ms ease-in-out infinite;
   }
