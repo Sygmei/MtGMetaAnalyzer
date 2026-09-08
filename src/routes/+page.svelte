@@ -26,6 +26,11 @@
     </a>
 
     {#if $currentUser}
+      <a class={cardClass} href="/tournament" data-sveltekit-preload-code="eager" data-sveltekit-preload-data="hover">
+        <p class={eyebrowClass}>{$t("tournament.title")}</p>
+        <h2 class="mt-2 text-xl font-bold">{$t("tournament.homeTitle")}</h2>
+        <p class="mt-2 text-sm text-stone-400">{$t("tournament.homeDescription")}</p>
+      </a>
       <a class={cardClass} href="/matches" data-sveltekit-preload-code="eager" data-sveltekit-preload-data="hover">
         <p class={eyebrowClass}>Matcher</p>
         <h2 class="mt-2 text-xl font-bold">{$t("home.matcherTitle")}</h2>

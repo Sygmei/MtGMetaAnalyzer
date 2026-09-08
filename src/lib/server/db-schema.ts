@@ -1,4 +1,5 @@
-import { boolean, bigserial, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { sql } from 'drizzle-orm';
+import { check, foreignKey, boolean, bigserial, date, doublePrecision, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
 import type { AnalyzeOutput } from './types';
 
 export const mtgtop8Commanders = pgTable(
@@ -155,3 +156,81 @@ export const userCardLists = pgTable(
     index('idx_user_card_lists_kind').on(table.kind)
   ]
 );
+
+
+export const tournamentLeagues = pgTable('tournament_leagues', {
+  id: text('id').primaryKey(),
+  name: text('name').notNull(),
+  description: text('description').notNull().default(''),
+  startsOn: date('starts_on', { mode: 'string' }).notNull(),
+  endsOn: date('ends_on', { mode: 'string' }).notNull(),
+  archived: boolean('archived').notNull().default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [check('tournament_league_dates', sql`${table.endsOn} >= ${table.startsOn}`)]);
+
+export const tournamentMembers = pgTable('tournament_members', {
+  id: text('id').primaryKey(),
+  leagueId: text('league_id').notNull().references(() => tournamentLeagues.id, { onDelete: 'restrict' }),
+  userId: text('user_id').references(() => users.id, { onDelete: 'set null' }),
+  name: text('name').notNull(),
+  active: boolean('active').notNull().default(true),
+  joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [
+  uniqueIndex('tournament_members_league_id_user_id_key').on(table.leagueId, table.userId),
+  uniqueIndex('tournament_members_league_id_id_key').on(table.leagueId, table.id)
+]);
+
+export const tournamentEvents = pgTable('tournament_events', {
+  id: text('id').primaryKey(),
+  leagueId: text('league_id').notNull().references(() => tournamentLeagues.id, { onDelete: 'restrict' }),
+  name: text('name').notNull(),
+  eventDate: date('event_date', { mode: 'string' }).notNull(),
+  status: text('status').$type<'draft' | 'published'>().notNull().default('draft'),
+  revision: integer('revision').notNull().default(0),
+  scoringVersion: text('scoring_version').notNull().default('log2-2.5-v1'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [
+  uniqueIndex('tournament_events_league_id_id_key').on(table.leagueId, table.id),
+  index('tournament_events_league_date').on(table.leagueId, table.eventDate),
+  check('tournament_events_status_check', sql`${table.status} in ('draft', 'published')`),
+  check('tournament_events_revision_check', sql`${table.revision} >= 0`)
+]);
+
+export const tournamentResults = pgTable('tournament_results', {
+  id: text('id').primaryKey(),
+  leagueId: text('league_id').notNull(),
+  eventId: text('event_id').notNull(),
+  memberId: text('member_id').notNull(),
+  rank: integer('rank').notNull(),
+  points: integer('points').notNull(),
+  commanders: text('commanders').notNull().default('')
+}, (table) => [
+  foreignKey({ columns: [table.leagueId, table.eventId], foreignColumns: [tournamentEvents.leagueId, tournamentEvents.id] }).onDelete('restrict'),
+  foreignKey({ columns: [table.leagueId, table.memberId], foreignColumns: [tournamentMembers.leagueId, tournamentMembers.id] }).onDelete('restrict'),
+  uniqueIndex('tournament_results_event_id_member_id_key').on(table.eventId, table.memberId),
+  uniqueIndex('tournament_results_event_id_rank_key').on(table.eventId, table.rank),
+  index('tournament_results_league').on(table.leagueId),
+  check('tournament_results_rank_check', sql`${table.rank} > 0`),
+  check('tournament_results_points_check', sql`${table.points} > 0`),
+  check('tournament_results_commanders_length', sql`char_length(${table.commanders}) <= 300`)
+]);
+
+export type TournamentSnapshot = {
+  name: string;
+  eventDate: string;
+  status: 'draft' | 'published';
+  scoringVersion: string;
+  results: { memberId: string; name: string; rank: number; points: number; commanders?: string }[];
+};
+
+export const tournamentEventHistory = pgTable('tournament_event_history', {
+  id: text('id').primaryKey(),
+  eventId: text('event_id').notNull().references(() => tournamentEvents.id, { onDelete: 'restrict' }),
+  revision: integer('revision').notNull(),
+  actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+  actorName: text('actor_name').notNull(),
+  reason: text('reason').notNull().default(''),
+  snapshot: jsonb('snapshot').$type<TournamentSnapshot>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+}, (table) => [uniqueIndex('tournament_event_history_event_id_revision_key').on(table.eventId, table.revision)]);

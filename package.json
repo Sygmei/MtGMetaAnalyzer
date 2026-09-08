@@ -13,7 +13,10 @@
     "db:purge:mtgtop8": "node scripts/purge-mtgtop8-cache.mjs",
     "db:generate": "drizzle-kit generate",
     "auth:bootstrap": "node scripts/login-link.mjs",
-    "auth:login-link": "node scripts/login-link.mjs"
+    "auth:login-link": "node scripts/login-link.mjs",
+    "test:tournament": "node --test tests/tournament.test.mjs tests/commanders.test.mjs",
+    "test:tournament:integration": "node --test tests/tournament.integration.test.mjs",
+    "test:tournament:browser": "node --test tests/tournament.browser.test.mjs"
   },
   "devDependencies": {
     "@sveltejs/adapter-auto": "^6.1.0",

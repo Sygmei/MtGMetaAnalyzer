@@ -1,3 +1,4 @@
+import { tournamentTranslations } from './tournament-i18n';
 import { derived, writable } from 'svelte/store';
 
 export type Locale = 'en' | 'fr';
@@ -5,6 +6,7 @@ export type TranslationKey = keyof typeof translations.en;
 
 const translations = {
   en: {
+    ...tournamentTranslations.en,
     'nav.home': 'Home',
     'nav.deckAnalyzer': 'Deck Analyzer',
     'nav.deckAnalyzerKicker': 'Add / Cut / Keep',
@@ -71,6 +73,7 @@ const translations = {
     'matcher.delete': 'Delete'
   },
   fr: {
+    ...tournamentTranslations.fr,
     'nav.home': 'Accueil',
     'nav.deckAnalyzer': 'Analyseur de deck',
     'nav.deckAnalyzerKicker': 'Ajouts / Retraits / Garder',

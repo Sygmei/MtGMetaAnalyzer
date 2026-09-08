@@ -206,3 +206,48 @@ Main tables:
 - Moxfield extraction is Playwright-only.
 - MtgTop8 and Moxfield markup can change; selectors may need updates over time.
 - Existing Python implementation remains in `src/mtg_meta_analyzer` as legacy reference.
+
+
+## Tournament leagues
+
+The **Tournament** section (`/tournament`) is available to signed-in users. Admins and superadmins can create leagues, choose arbitrary start/end dates, manage Karton-user membership, and create events. All signed-in users can browse leagues and published results. Members also see their league rank, points, attendance, and event history.
+
+### Scoring and standings
+
+Each attendee receives `1 + floor(2.5 * log2(participants / rank))` points, where `participants` counts the event's actual attendees, not league members. Scores are integers, last place receives one point, and podium positions have distinct scores. Exact integer comparisons keep logarithm boundary cases stable. The formula is versioned as `log2-2.5-v1` on each event.
+
+Admins can optionally record commanders for each event participant using Scryfall autocomplete. Selecting a card detects Partner (including named partners and groups such as Survivors / Friends forever), Choose a Background, and Doctor’s companion; a second input suggests compatible cards. Detection uses front-face Oracle text, so Companion and double-faced cards do not automatically add a second commander. Both names are stored together with `+` for compatibility with existing results. Lookup is debounced, cached, and rate-spaced through an authenticated admin endpoint; manual names and existing results remain saveable if Scryfall is unavailable. This records the cards played, without enforcing a format ban list or blocking historical pairings. Commanders appear with event results and personal event history, and corrections retain previous commander entries in the revision history. Historical results with no commander remain valid.
+
+Admins enter unique, consecutive final placements starting at 1; blank players are absent and earn zero. At least two participants are required to publish. The preview and server use the same scoring function, and the server independently validates all input.
+
+All published events contribute to league totals. Equal totals share a competition rank (for example, 1, 2, 2, 4). Draft results are visible only to admins and do not contribute. Corrections require a reason; each revision preserves the event details, placements, awarded points, actor, and reason. Unpublishing removes that event from totals. Publishing or correcting replaces the results transactionally, and stale submissions are rejected instead of overwriting another admin's work.
+
+Removing a member prevents adding them to new events while preserving existing results. Deleting a Karton account preserves its league membership record and historical scores with a retained name. Archiving a league pauses membership/event editing and preserves its standings; admins can reopen it in settings. Date edits must still include all existing events. Leagues are independent: there is no annual reset or automatic carryover.
+
+### Migration and verification
+
+`migrations/0007_tournaments.sql` adds five tables for leagues, members, events, results, and revision history. `migrations/0008_tournament_commanders.sql` adds the optional commander field to event results. Run `npm run db:migrate` with `DATABASE_URL_ADMIN` before starting the updated app. The Docker entrypoint already runs migrations on startup.
+
+Run scoring tests (using a Node version with native TypeScript support):
+
+```bash
+npm run test:tournament
+npm run check
+npm run build
+```
+
+Database and browser tests require an **isolated, migrated test database**. They create their own fixtures and remove those fixtures afterward. They are skipped unless their explicit test environment variables are set:
+
+```bash
+TEST_DATABASE_URL=postgres://localhost/karton_test npm run test:tournament:integration
+```
+
+For browser tests, start the app with both `DATABASE_URL_RW` and `DATABASE_URL_RO` pointing to that same test database, then run:
+
+```bash
+TEST_DATABASE_URL=postgres://localhost/karton_test \
+TEST_BASE_URL=http://localhost:5173 \
+npm run test:tournament:browser
+```
+
+Playwright Chromium must be installed, or set `TEST_BROWSER_CHANNEL=chrome` to use an installed Chrome. Set `TEST_SCREENSHOTS_DIR` to save desktop and mobile screenshots. Browser checks cover the admin workflow, player and non-member access, anonymous redirects, French labels, and narrow layouts.

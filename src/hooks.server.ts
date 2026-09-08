@@ -85,7 +85,8 @@ function shouldResolveSessionUser(event: Parameters<Handle>[0]['event']): boolea
       pathname.startsWith('/account') ||
       pathname.startsWith('/admin') ||
       pathname.startsWith('/analyzer') ||
-      pathname.startsWith('/matches')
+      pathname.startsWith('/matches') ||
+      pathname.startsWith('/tournament')
     );
   }
 
@@ -96,7 +97,8 @@ function shouldResolveSessionUser(event: Parameters<Handle>[0]['event']): boolea
     pathname === '/matches/admin-users' ||
     pathname === '/matches/users/data' ||
     pathname.startsWith('/account') ||
-    pathname.startsWith('/admin')
+    pathname.startsWith('/admin') ||
+    pathname.startsWith('/tournament')
   );
 }
 
