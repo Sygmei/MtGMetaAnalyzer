@@ -7,6 +7,9 @@ import { getReadDb, getWriteDb } from './db';
 import type { AnalyzeOutput } from './types';
 
 interface AnalysisInputSnapshot {
+  inputMode?: string;
+  commanderNames?: string;
+  requiredCards?: string;
   startDate: string;
   endDate: string;
   keepTop: string;

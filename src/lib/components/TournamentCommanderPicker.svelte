@@ -6,6 +6,8 @@
   export let playerName: string;
   export let value = '';
   export let disabled = false;
+  export let searchEndpoint = '/tournament/commanders';
+  export let fieldName = `commanders:${memberId}`;
   let [primaryName, secondaryName] = splitCommanders(value ?? '');
   let primary: CommanderCard | null = null;
   let secondary: CommanderCard | null = null;
@@ -33,15 +35,15 @@
   }
 </script>
 
-<div class="t-stack min-w-0" data-commander-picker={memberId}>
-  <input type="hidden" name={`commanders:${memberId}`} {value} {disabled} />
-  <CommanderAutocomplete id={`commander-${memberId}`} label={`${playerName} — ${$t('tournament.commander')}`}
-    bind:value={primaryName} {disabled} onresolve={setPrimary} onfailure={() => lookupFailed = true}
+<div class="t-stack grid gap-4 min-w-0" data-commander-picker={memberId}>
+  <input type="hidden" name={fieldName} {value} {disabled} />
+  <CommanderAutocomplete id={`commander-${memberId}`} label={`${playerName ? `${playerName} — ` : ''}${$t('tournament.commander')}`}
+    bind:value={primaryName} {disabled} {searchEndpoint} onresolve={setPrimary} onfailure={() => lookupFailed = true}
     onedit={() => { primary = null; if (!primaryName.trim()) { secondaryName = ''; secondary = null; manualSecond = false; } }} />
   {#if primary?.pairings.length}<p class="t-muted text-sm">{primary.pairings.map(pairingLabel).join(' · ')}</p>{/if}
   {#if showSecond}
-    <CommanderAutocomplete id={`commander-second-${memberId}`} label={`${playerName} — ${$t('tournament.secondCommander')}`}
-      bind:value={secondaryName} {disabled} withId={primary?.id}
+    <CommanderAutocomplete id={`commander-second-${memberId}`} label={`${playerName ? `${playerName} — ` : ''}${$t('tournament.secondCommander')}`}
+      bind:value={secondaryName} {disabled} {searchEndpoint} withId={primary?.id}
       onresolve={(card) => secondary = card} onedit={() => secondary = null} />
   {:else if lookupFailed && primaryName}
     <button class="t-muted underline text-left text-sm" type="button" {disabled} on:click={() => manualSecond = true}>{$t('tournament.manualSecondCommander')}</button>

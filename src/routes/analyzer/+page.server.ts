@@ -5,15 +5,18 @@ import { saveAnalysisRun } from '$lib/server/analysis-runs-repo';
 import { isAppError } from '$lib/server/app-error';
 import { getTraceId, withSpan } from '$lib/server/otel';
 import { completeProgress, failProgress, initProgress, updateProgress } from '$lib/server/progress';
-import { analyzeFromDeckUrl } from '$lib/server/pipeline';
+import { analyzeDeck } from '$lib/server/pipeline';
 import { parseDate } from '$lib/server/utils';
 
 import type { Actions } from './$types';
 
 const DEFAULT_VALUES = {
+  inputMode: 'deck',
+  commanderNames: '',
   moxfieldUrl: '',
   startDate: '',
   endDate: '',
+  requiredCards: '',
   keepTop: '50',
   cutTop: '50',
   addTop: '50'
@@ -27,19 +30,28 @@ export const actions: Actions = {
     const requestTraceId = normalizeTraceId(getTraceId());
 
     const values = {
+      inputMode: String(formData.get('inputMode') || 'deck'),
+      commanderNames: String(formData.get('commanderNames') || '').trim(),
       moxfieldUrl: String(formData.get('moxfieldUrl') || '').trim(),
       startDate: String(formData.get('startDate') || '').trim(),
       endDate: String(formData.get('endDate') || '').trim(),
+      requiredCards: String(formData.get('requiredCards') || '').trim(),
       keepTop: String(formData.get('keepTop') || DEFAULT_VALUES.keepTop).trim(),
       cutTop: String(formData.get('cutTop') || DEFAULT_VALUES.cutTop).trim(),
       addTop: String(formData.get('addTop') || DEFAULT_VALUES.addTop).trim()
     };
     const progressId = String(formData.get('progressId') || '').trim();
     if (progressId) {
-      await initProgress(progressId);
+      await initProgress(progressId, values.inputMode === 'commander');
     }
 
-    if (!values.moxfieldUrl) {
+    if (!['deck', 'commander'].includes(values.inputMode) ||
+        (values.inputMode === 'commander' && (!values.commanderNames || values.commanderNames.length > 303))) {
+      const message = 'Choose an input mode and enter a commander name.';
+      if (progressId) await failProgress(progressId, message);
+      return fail(400, { error: message, values });
+    }
+    if (values.inputMode === 'deck' && !values.moxfieldUrl) {
       if (progressId) {
         await failProgress(progressId, 'Deck URL is required');
       }
@@ -50,24 +62,27 @@ export const actions: Actions = {
       });
     }
     let normalizedMoxfieldUrl = '';
-    try {
-      const normalized = normalizeSupportedDeckUrl(values.moxfieldUrl);
-      normalizedMoxfieldUrl = normalized.normalizedUrl;
-      values.moxfieldUrl = normalized.normalizedUrl;
-    } catch (error) {
-      const appError = isAppError(error) ? error : null;
-      const status = appError?.httpStatusCode ?? 400;
-      const userError =
-        appError?.userFacingError ??
-        'Invalid deck URL. Use moxfield.com/decks/<id>, archidekt.com/decks/<id>, or manabox.app/decks/<id>.';
-      if (progressId) {
-        await failProgress(progressId, userError);
+    if (values.inputMode === 'deck') {
+      try {
+        const normalized = normalizeSupportedDeckUrl(values.moxfieldUrl);
+        normalizedMoxfieldUrl = normalized.normalizedUrl;
+        values.moxfieldUrl = normalized.normalizedUrl;
+      } catch (error) {
+        const appError = isAppError(error) ? error : null;
+        const status = appError?.httpStatusCode ?? 400;
+        const userError =
+          appError?.userFacingError ??
+          'Invalid deck URL. Use moxfield.com/decks/<id>, archidekt.com/decks/<id>, or manabox.app/decks/<id>.';
+        if (progressId) {
+          await failProgress(progressId, userError);
+        }
+        return fail(status, {
+          error: userError,
+          traceId: requestTraceId || undefined,
+          values: { ...DEFAULT_VALUES, ...values }
+        });
       }
-      return fail(status, {
-        error: userError,
-        traceId: requestTraceId || undefined,
-        values: { ...DEFAULT_VALUES, ...values }
-      });
+
     }
 
     const keepTop = parsePositiveInt(values.keepTop, 'keepTop');
@@ -135,10 +150,12 @@ export const actions: Actions = {
             `[analysis] start trace_id=${analysisTraceId || 'unavailable'} ip=${clientIp} deckUrl=${normalizedMoxfieldUrl}`
           );
 
-          return analyzeFromDeckUrl({
+          return analyzeDeck({
+            commanderNames: values.inputMode === 'commander' ? values.commanderNames : undefined,
             deckUrl: normalizedMoxfieldUrl,
             startDate,
             endDate,
+            requiredCards: values.requiredCards.split(/\r?\n/).map((card) => card.trim()).filter(Boolean),
             keepTop,
             cutTop,
             addTop,
@@ -183,8 +200,11 @@ export const actions: Actions = {
           traceId: normalizeTraceId(span.spanContext().traceId),
           output,
           input: {
+            inputMode: values.inputMode,
+            commanderNames: values.commanderNames,
             startDate: values.startDate,
             endDate: values.endDate,
+            requiredCards: values.requiredCards,
             keepTop: values.keepTop,
             cutTop: values.cutTop,
             addTop: values.addTop

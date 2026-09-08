@@ -3,6 +3,7 @@ import { fetchInputDeckFromUrl } from '../adapters/deck-source';
 import { getDuelCommanderDeckBannedCardsNormalized } from '../adapters/duel-commander-banlist';
 import { MtgTop8Client, type CrawlProgressEvent } from '../adapters/mtgtop8';
 import { isAppError } from './app-error';
+import { resolveCommanderAnalysisDeck } from './commander-analysis';
 import {
   getLatestCachedEventDate,
   insertDecksForCommander,
@@ -14,7 +15,9 @@ import type { AnalyzeOutput, DeckRecord } from './types';
 import { formatDate, slugify } from './utils';
 
 interface AnalyzePipelineInput {
-  deckUrl: string;
+  deckUrl?: string;
+  commanderNames?: string;
+  requiredCards?: string[];
   startDate?: Date | null;
   endDate?: Date | null;
   keepTop?: number;
@@ -35,11 +38,15 @@ export interface AnalyzePipelineProgressEvent {
   mtgtop8?: CrawlProgressEvent;
 }
 
-export async function analyzeFromDeckUrl(input: AnalyzePipelineInput): Promise<AnalyzeOutput> {
+export async function analyzeFromDeckUrl(input: AnalyzePipelineInput & { deckUrl: string }): Promise<AnalyzeOutput> {
+  return analyzeDeck(input);
+}
+
+export async function analyzeDeck(input: AnalyzePipelineInput): Promise<AnalyzeOutput> {
   return await withSpan(
     'analysis.pipeline',
     {
-      'analysis.deck_url': input.deckUrl,
+      'analysis.deck_url': input.deckUrl ?? '',
       'analysis.keep_top': input.keepTop ?? 50,
       'analysis.cut_top': input.cutTop ?? 50,
       'analysis.add_top': input.addTop ?? 50
@@ -47,15 +54,17 @@ export async function analyzeFromDeckUrl(input: AnalyzePipelineInput): Promise<A
     async (pipelineSpan) => {
       const headless = input.headless ?? true;
       input.onProgress?.({
-        stage: 'moxfield',
-        message: 'Fetching input deck...',
+        stage: input.commanderNames ? 'commander' : 'moxfield',
+        message: input.commanderNames ? 'Resolving commander...' : 'Fetching input deck...',
         percentHint: 5
       });
-      const inputDeck = await withSpan(
-        'deck.fetch_input',
-        { 'deck.url': input.deckUrl, 'deck.headless': headless },
-        () => fetchInputDeckFromUrl(input.deckUrl, { headless })
-      );
+      const inputDeck = input.commanderNames
+        ? await resolveCommanderAnalysisDeck(input.commanderNames)
+        : await withSpan(
+            'deck.fetch_input',
+            { 'deck.url': input.deckUrl ?? '', 'deck.headless': headless },
+            () => fetchInputDeckFromUrl(input.deckUrl ?? '', { headless })
+          );
       pipelineSpan.setAttribute('deck.source', inputDeck.source);
 
       const mtgtop8 = new MtgTop8Client(25_000, input.delaySeconds ?? 0.2);
@@ -144,7 +153,7 @@ export async function analyzeFromDeckUrl(input: AnalyzePipelineInput): Promise<A
 
       input.onProgress?.({
         stage: 'analysis',
-        message: 'Running keep / cut / add analysis...',
+        message: input.commanderNames ? 'Analyzing popular cards...' : 'Running keep / cut / add analysis...',
         percentHint: 92
       });
       const insertedDeckRows = await withSpan('db.insert_decks', { 'commander.slug': commanderSlug }, () =>
@@ -165,6 +174,7 @@ export async function analyzeFromDeckUrl(input: AnalyzePipelineInput): Promise<A
           analyzeCards(inputDeck, cachedDecks, {
             startDate: input.startDate,
             endDate: input.endDate,
+            requiredCards: input.requiredCards,
             keepTop: input.keepTop,
             cutTop: input.cutTop,
             addTop: input.addTop,
@@ -196,6 +206,7 @@ export async function analyzeFromDeckUrl(input: AnalyzePipelineInput): Promise<A
 
 export async function analyzeFromMoxfieldUrl(input: {
   moxfieldUrl: string;
+  requiredCards?: string[];
   startDate?: Date | null;
   endDate?: Date | null;
   keepTop?: number;
@@ -210,6 +221,7 @@ export async function analyzeFromMoxfieldUrl(input: {
 }): Promise<AnalyzeOutput> {
   return await analyzeFromDeckUrl({
     deckUrl: input.moxfieldUrl,
+    requiredCards: input.requiredCards,
     startDate: input.startDate,
     endDate: input.endDate,
     keepTop: input.keepTop,

@@ -1,9 +1,10 @@
-import type { AnalysisResult, CardStat, DeckRecord, MoxfieldDeck } from './types';
+import type { AnalysisResult, CardStat, DeckRecord, AnalysisDeck } from './types';
 import { formatDate, normalizeName, parseDate, toDateStart } from './utils';
 
 interface AnalyzeOptions {
   startDate?: Date | null;
   endDate?: Date | null;
+  requiredCards?: string[];
   keepTop?: number;
   cutTop?: number;
   addTop?: number;
@@ -11,7 +12,7 @@ interface AnalyzeOptions {
 }
 
 export function analyzeCards(
-  moxfieldDeck: MoxfieldDeck,
+  moxfieldDeck: AnalysisDeck,
   cachedDecks: DeckRecord[],
   options: AnalyzeOptions = {}
 ): AnalysisResult {
@@ -19,6 +20,10 @@ export function analyzeCards(
   const cutTop = options.cutTop ?? 50;
   const addTop = options.addTop ?? 50;
   const bannedCards = options.bannedCardsNormalized || new Set<string>();
+  const requiredCards = [...new Map((options.requiredCards ?? [])
+    .map((card) => card.trim()).filter(Boolean)
+    .map((card) => [normalizeName(card), card])).values()];
+  const requiredAliases = requiredCards.map(cardNameAliases);
 
   const startBoundary = options.startDate ? toDateStart(options.startDate) : Number.NEGATIVE_INFINITY;
   const endBoundary = options.endDate ? toDateStart(options.endDate) : Number.POSITIVE_INFINITY;
@@ -45,6 +50,14 @@ export function analyzeCards(
     const stamp = toDateStart(parsedDate);
     if (stamp < startBoundary || stamp > endBoundary) {
       continue;
+    }
+    if (requiredAliases.length) {
+      const deckAliases = new Set(Object.entries(deck.cards)
+        .filter(([, quantity]) => quantity > 0)
+        .flatMap(([card]) => [...cardNameAliases(card)]));
+      if (!requiredAliases.every((aliases) => [...aliases].some((alias) => deckAliases.has(alias)))) {
+        continue;
+      }
     }
     filteredDecks.push(deck);
   }
@@ -104,16 +117,18 @@ export function analyzeCards(
   const allStats = [...keepCutStats].sort(byDesc);
   const keep = allStats.slice(0, keepTop);
   const cut = [...keepCutStats].sort(byAsc).slice(0, cutTop);
-  const toAdd = [...toAddStats].sort(byDesc).slice(0, addTop);
+  const sortedAddStats = [...toAddStats].sort(byDesc);
+  const toAdd = moxfieldDeck.source === 'commander' ? sortedAddStats : sortedAddStats.slice(0, addTop);
 
   return reconcileAnalysisCardNames({
     startDate: options.startDate ? formatDate(options.startDate) : null,
     endDate: options.endDate ? formatDate(options.endDate) : null,
+    requiredCards,
     totalDecksConsidered: totalDecks,
-    keep,
-    cut,
+    keep: requiredCards.length && !totalDecks ? [] : keep,
+    cut: requiredCards.length && !totalDecks ? [] : cut,
     toAdd,
-    allStats
+    allStats: requiredCards.length && !totalDecks ? [] : allStats
   });
 }
 

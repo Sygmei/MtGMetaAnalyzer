@@ -5,6 +5,8 @@
   import type { SubmitFunction } from "@sveltejs/kit";
   import { onDestroy, onMount } from "svelte";
 
+  import RequiredCardsPicker from "$lib/components/RequiredCardsPicker.svelte";
+  import TournamentCommanderPicker from "$lib/components/TournamentCommanderPicker.svelte";
   import CardTable from "$lib/components/CardTable.svelte";
   import PageHeader from "$lib/components/PageHeader.svelte";
   import { currentUser } from "$lib/current-user";
@@ -25,9 +27,12 @@
         error?: string;
         traceId?: string;
         values?: {
+          inputMode: string;
+          commanderNames: string;
           moxfieldUrl: string;
           startDate: string;
           endDate: string;
+          requiredCards: string;
           keepTop: string;
           cutTop: string;
           addTop: string;
@@ -39,7 +44,7 @@
             url: string;
           };
           moxfieldDeck: {
-            source: "moxfield" | "archidekt" | "manabox";
+            source: "moxfield" | "archidekt" | "manabox" | "commander";
             name: string;
             deckId: string;
             commanders: string[];
@@ -62,16 +67,22 @@
     | undefined;
 
   let values: {
+    inputMode: string;
+    commanderNames: string;
     moxfieldUrl: string;
     startDate: string;
     endDate: string;
+    requiredCards: string;
     keepTop: string;
     cutTop: string;
     addTop: string;
   } = {
+    inputMode: "deck",
+    commanderNames: "",
     moxfieldUrl: "",
     startDate: "",
     endDate: "",
+    requiredCards: "",
     keepTop: "50",
     cutTop: "50",
     addTop: "50"
@@ -82,9 +93,12 @@
   let activeAnalysisTab: AnalysisTab = "cut";
 
   $: values = {
+    inputMode: form?.values?.inputMode ?? "deck",
+    commanderNames: form?.values?.commanderNames ?? "",
     moxfieldUrl: form?.values?.moxfieldUrl ?? "",
     startDate: form?.values?.startDate ?? "",
     endDate: form?.values?.endDate ?? "",
+    requiredCards: form?.values?.requiredCards ?? "",
     keepTop: form?.values?.keepTop ?? "50",
     cutTop: form?.values?.cutTop ?? "50",
     addTop: form?.values?.addTop ?? "50"
@@ -734,12 +748,29 @@
 
   <section class={`${panelClass} grid gap-5`}>
     <form method="POST" class="grid gap-5" use:enhance={enhanceSubmit} aria-busy={isSubmitting}>
+      <fieldset class="flex flex-wrap gap-4" disabled={isSubmitting}>
+        <legend class="sr-only">{$t('analyzer.inputMode')}</legend>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="inputMode" value="deck" bind:group={values.inputMode} /> {$t('analyzer.deckMode')}</label>
+        <label class="flex items-center gap-2 text-sm"><input type="radio" name="inputMode" value="commander" bind:group={values.inputMode} /> {$t('analyzer.commanderMode')}</label>
+      </fieldset>
+      {#if values.inputMode === 'commander'}
+        {#key form}
+          <TournamentCommanderPicker memberId="analyzer" playerName="" fieldName="commanderNames"
+            searchEndpoint="/analyzer/commanders" bind:value={values.commanderNames} />
+        {/key}
+        <p class="text-xs text-stone-400">{$t('analyzer.commanderHelp')}</p>
+        <button class="ui-icon-button ui-icon-primary" type="submit" disabled={isSubmitting || !values.commanderNames.trim()}
+          aria-label={isSubmitting ? $t('analyzer.analyzing') : $t('analyzer.submit')}
+          title={isSubmitting ? $t('analyzer.analyzing') : $t('analyzer.submit')}>
+          <Icon name={isSubmitting ? 'loader' : 'scan'} size={20} />
+        </button>
+      {:else}
       <div class="grid gap-2">
         <label class={labelTextClass} for="deck-url">{$t("analyzer.deckUrl")}</label>
         <div class="flex items-start gap-2">
           <input id="deck-url" class={inputClass} name="moxfieldUrl" type="text" inputmode="url"
             autocapitalize="off" autocorrect="off" spellcheck="false" required
-            placeholder="https://www.moxfield.com/decks/…" aria-describedby="deck-sources" value={values.moxfieldUrl} />
+            placeholder="https://www.moxfield.com/decks/…" aria-describedby="deck-sources" bind:value={values.moxfieldUrl} />
           <button class="ui-icon-button ui-icon-primary" type="submit" disabled={isSubmitting}
             aria-label={isSubmitting ? $t("analyzer.analyzing") : $t("analyzer.submit")}
             title={isSubmitting ? $t("analyzer.analyzing") : $t("analyzer.submit")}>
@@ -748,6 +779,18 @@
         </div>
         <span id="deck-sources" class="text-xs text-stone-400">{$t("analyzer.sources")}</span>
       </div>
+
+      {/if}
+
+      <details class="date-filter" open={Boolean(values.requiredCards)}>
+        <summary>
+          <Icon name="search" size={16} /> {$t("analyzer.requiredCards")}
+          <span class="filter-chevron"><Icon name="chevron" size={14} /></span>
+        </summary>
+        <div class="mt-3 grid gap-2">
+          <RequiredCardsPicker bind:value={values.requiredCards} disabled={isSubmitting} />
+        </div>
+      </details>
 
       <details class="date-filter" open={Boolean(values.startDate || values.endDate)}>
         <summary>
@@ -845,7 +888,7 @@
             {#each previousAnalyses as analysis}
               <a class="grid gap-1 rounded border border-white/10 bg-stone-950/60 p-3 text-stone-100 no-underline hover:border-primary-300/50" href={`/analysis/${analysis.shareId}`}>
                 <strong>{analysis.commanderName || "Deck analysis"}</strong>
-                <span class="truncate text-sm text-stone-400">{analysis.moxfieldUrl}</span>
+                <span class="truncate text-sm text-stone-400">{analysis.moxfieldUrl || $t("analyzer.commanderMode")}</span>
                 <small class="text-stone-500">
                   {new Date(analysis.createdAt).toLocaleString()}
                   {#if analysis.ignoreBefore || analysis.ignoreAfter}
@@ -865,6 +908,14 @@
   {/if}
 
   {#if output}
+    {#if output.analysis.requiredCards?.length}
+      <section class={panelClass}>
+        <p class="text-sm text-stone-300">{$t("analyzer.requiredCards")}: {output.analysis.requiredCards.join(" · ")}</p>
+        {#if output.analysis.totalDecksConsidered === 0}
+          <p class="mt-2 text-sm text-amber-200" role="status">{$t("analyzer.noMatchingDecks")}</p>
+        {/if}
+      </section>
+    {/if}
     <section class={`${panelClass} grid gap-4`}>
       <div class="flex flex-wrap items-start justify-between gap-3">
         <h2 class="text-xl font-bold">Deck Snapshot</h2>
@@ -877,7 +928,7 @@
         <article class="rounded border border-white/10 bg-stone-950/60 p-4">
           <p class={statLabelClass}>Deck</p>
           <p class={statValueClass}>{output.moxfieldDeck.name}</p>
-          <p class="mt-1 text-sm text-stone-400">{deckSourceLabel(output.moxfieldDeck.source)} - {output.moxfieldDeck.deckId}</p>
+          <p class="mt-1 text-sm text-stone-400">{output.moxfieldDeck.source === "commander" ? $t("analyzer.commanderMode") : `${deckSourceLabel(output.moxfieldDeck.source)} - ${output.moxfieldDeck.deckId}`}</p>
         </article>
         <article class="rounded border border-white/10 bg-stone-950/60 p-4">
           <p class={statLabelClass}>Commander</p>
@@ -925,6 +976,10 @@
     </section>
 
     <section class={`${panelClass} grid gap-4`}>
+    {#if output.moxfieldDeck.source === 'commander'}
+      <h2 class="text-xl font-bold">{$t('analyzer.popularCards')}</h2>
+      <CardTable cards={output.analysis.toAdd} />
+    {:else}
       <div class="grid grid-cols-3 rounded border border-white/10 bg-stone-950 p-1" role="tablist" aria-label="Analysis views">
         <button
           class={analysisTabClass("cut")}
@@ -974,6 +1029,7 @@
           <CardTable cards={output.analysis.keep} />
         </article>
       {/if}
+    {/if}
     </section>
   {/if}
 </main>

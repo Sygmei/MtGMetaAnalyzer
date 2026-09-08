@@ -12,6 +12,8 @@ export interface InputDeck {
   cards: CardMap;
 }
 
+export type CommanderAnalysisDeck = Omit<InputDeck, 'source'> & { source: 'commander' };
+export type AnalysisDeck = InputDeck | CommanderAnalysisDeck;
 export type MoxfieldDeck = InputDeck;
 
 export interface CardList {
@@ -90,6 +92,7 @@ export interface CardStat {
 export interface AnalysisResult {
   startDate: string | null;
   endDate: string | null;
+  requiredCards?: string[];
   totalDecksConsidered: number;
   keep: CardStat[];
   cut: CardStat[];
@@ -106,7 +109,7 @@ export interface CachedCommanderInfo {
 }
 
 export interface AnalyzeOutput {
-  moxfieldDeck: InputDeck;
+  moxfieldDeck: AnalysisDeck;
   commander: CachedCommanderInfo;
   analyzedAt: string;
   analysis: AnalysisResult;

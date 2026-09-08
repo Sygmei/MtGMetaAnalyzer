@@ -49,14 +49,14 @@ interface ProgressRecord {
 const TTL_MS = 30 * 60 * 1000;
 const store = new Map<string, ProgressRecord>();
 
-export async function initProgress(id: string): Promise<ProgressState> {
+export async function initProgress(id: string, commanderOnly = false): Promise<ProgressState> {
   cleanupExpired();
   const now = new Date().toISOString();
   const state: ProgressState = {
     id,
     stage: 'queued',
     activeStageKey: 'queued',
-    stages: DEFAULT_PROGRESS_STAGES,
+    stages: commanderOnly ? DEFAULT_PROGRESS_STAGES.filter((stage) => stage.key !== 'moxfield') : DEFAULT_PROGRESS_STAGES,
     percent: 1,
     message: 'Preparing analysis request...',
     updatedAt: now,

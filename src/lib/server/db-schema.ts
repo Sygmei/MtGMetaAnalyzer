@@ -61,6 +61,9 @@ export const analysisRuns = pgTable(
       .$type<{
         startDate: string;
         endDate: string;
+        requiredCards?: string;
+        inputMode?: string;
+        commanderNames?: string;
         keepTop: string;
         cutTop: string;
         addTop: string;
